@@ -204,13 +204,24 @@ Once the item exists (§3), publishing is handled by GitHub Actions — no dashb
 ### One-time setup (You)
 
 1. **Chrome Web Store API access.** In the Google Cloud console create (or pick) a project, enable
-   the **Chrome Web Store API**, then create a **service account** and a **JSON key**.
+   the **Chrome Web Store API**, then create a **service account** (no IAM roles needed) and a
+   **JSON key** for it.
 2. **Give the service account publishing rights.** In the
-   [developer dashboard](https://chrome.google.com/webstore/devconsole), open the publisher settings
-   and add the service account email (`…@….iam.gserviceaccount.com`) as a user who can publish the
-   item.
-3. **Collect the IDs.** The extension ID is in the item's dashboard URL; the publisher ID is on the
-   publisher settings page.
+   [developer dashboard](https://chrome.google.com/webstore/devconsole), open the **Account**
+   section and add the service account email (`…@….iam.gserviceaccount.com`). Only **one** service
+   account can be linked to a publisher, so reuse it rather than creating a new one per workflow.
+3. **Collect the two IDs.** Neither is invented by you — Google assigns both:
+
+   | ID | When it appears | Where to copy it |
+   |---|---|---|
+   | Extension ID (item ID) | After your **first manual upload** (§3). The API cannot create an item | Item page → **Package** tab, or the dashboard URL `chrome.google.com/webstore/devconsole/<publisher-id>/<item-id>/edit` |
+   | Publisher ID | When the developer account is registered | **Publisher → Settings** (switch publisher first if you belong to several), or the UUID in the dashboard URL `chrome.google.com/webstore/devconsole/<publisher-id>` |
+
+   The extension ID is 32 lowercase letters `a`–`p` (for example
+   `abcdefghijklmnopabcdefghijklmnop`); the publisher ID is a UUID (for example
+   `f1e2d3c4-0000-4000-8000-a1b2c3d4e5f6`). An unpacked local build shows a *different* ID derived
+   from its folder path, so copy the dashboard value, not the one on `chrome://extensions`.
+
 4. **Store the values in the repository.** Settings → Secrets and variables → Actions:
 
    | Kind | Name | Value |

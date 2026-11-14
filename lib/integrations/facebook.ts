@@ -196,13 +196,20 @@ export const facebookAdapter: PlatformAdapter = {
 
   findOpenEditors() {
     return Array.from(
-      document.querySelectorAll<HTMLElement>('[contenteditable="true"][role="textbox"]'),
+      document.querySelectorAll<HTMLElement>(
+        '[contenteditable="true"][role="textbox"], div[contenteditable="true"]',
+      ),
     ).filter((editor) => {
       if (!isVisible(editor)) return false;
-      if (editor.closest('[role="dialog"]')) return false;
       const label = editor.getAttribute('aria-label') ?? '';
-      if (/comment|reply|write a comment/i.test(label)) return true;
-      return Boolean(editor.closest('form') && editor.closest('[role="article"]'));
+      // The new-post composer is not a comment box.
+      if (/create post|what'?s on your mind|write something/i.test(label)) return false;
+      if (/comment|reply/i.test(label)) return true;
+      // Localised labels: a textbox in a comment form, or in a post dialog.
+      return Boolean(
+        editor.closest('form') ||
+          (editor.closest('[role="dialog"]') && editor.closest('[role="article"]')),
+      );
     });
   },
 
@@ -215,7 +222,11 @@ export const facebookAdapter: PlatformAdapter = {
   },
 
   postForEditor(editor) {
-    let node = editor.closest<HTMLElement>('[role="article"]');
+    const dialog = editor.closest<HTMLElement>('[role="dialog"]');
+    const article = editor.closest<HTMLElement>('[role="article"]');
+    if (!article && dialog) return dialog;
+
+    let node = article;
     let outermost = node;
     while (node) {
       const parent = node.parentElement?.closest<HTMLElement>('[role="article"]');

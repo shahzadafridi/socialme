@@ -18,6 +18,20 @@ function labelOf(node: HTMLElement): string {
 }
 
 /**
+ * Facebook's thread composer has no label of its own; its wrapper carries one
+ * ("Thread composer"). Walk up a few levels looking for that hint.
+ */
+function inMessagingContainer(node: HTMLElement): boolean {
+  let parent = node.parentElement;
+  for (let depth = 0; parent && depth < 8; depth += 1) {
+    const label = `${parent.getAttribute('aria-label') ?? ''} ${parent.getAttribute('role') ?? ''}`;
+    if (/thread composer|conversation|messaging|chat/i.test(label)) return true;
+    parent = parent.parentElement;
+  }
+  return false;
+}
+
+/**
  * Message composers across the three networks. Comment boxes are excluded by
  * their "comment" label, so the same page can host both.
  */
@@ -27,8 +41,8 @@ export function findMessageComposers(): HTMLElement[] {
   ).filter((node) => {
     if (!isVisible(node)) return false;
     const label = labelOf(node);
-    if (!MESSAGE_HINT.test(label)) return false;
     if (/comment/i.test(label)) return false;
+    if (!MESSAGE_HINT.test(label) && !inMessagingContainer(node)) return false;
     if (node.closest('[role="dialog"]')?.querySelector('article[data-testid="tweet"]')) {
       // X reply dialog, not a DM
       return false;

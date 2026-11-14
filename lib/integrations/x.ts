@@ -136,11 +136,18 @@ export const xAdapter: PlatformAdapter = {
   },
 
   findOpenEditors() {
-    return Array.from(document.querySelectorAll<HTMLElement>(EDITOR_SELECTOR)).filter(
-      (editor) =>
-        isVisible(editor) &&
-        (Boolean(editor.closest('[role="dialog"]')) || editor.hasAttribute('data-testid')),
+    // With a dialog open, only its composer matters; the page behind it is inert.
+    const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(
+      (node) => node.querySelector(EDITOR_SELECTOR),
     );
+    const scope: ParentNode = dialog ?? document;
+    return Array.from(scope.querySelectorAll<HTMLElement>(EDITOR_SELECTOR)).filter((editor) => {
+      if (!isVisible(editor)) return false;
+      const owner = editor.closest('[role="dialog"]');
+      // The new-post dialog has no post to reply to; the panel handles posting.
+      if (owner) return Boolean(owner.querySelector('article[data-testid="tweet"]'));
+      return Boolean(editor.hasAttribute('data-testid') || editor.closest('article'));
+    });
   },
 
   findMessageComposers() {
@@ -156,7 +163,11 @@ export const xAdapter: PlatformAdapter = {
     if (dialog) {
       const article = dialog.querySelector<HTMLElement>('article[data-testid="tweet"]');
       if (article) return article;
+      return null;
     }
-    return editor.closest<HTMLElement>('article[data-testid="tweet"]');
+    const own = editor.closest<HTMLElement>('article[data-testid="tweet"]');
+    if (own) return own;
+    // Inline "Post your reply" box on a status page: the post is the one above it.
+    return document.querySelector<HTMLElement>('article[data-testid="tweet"]');
   },
 };

@@ -17,10 +17,19 @@ function labelOf(node: HTMLElement): string {
 
 const MEDIA_ICON = /emoji|gif|photo|image|attach|file|sticker|media/;
 
+const SUBMIT_LABEL = /^(send|comment|post|reply|share)$/i;
+
+function isSubmitControl(node: HTMLElement): boolean {
+  const hay = `${node.getAttribute('aria-label') ?? ''} ${node.innerText ?? ''}`.trim();
+  return SUBMIT_LABEL.test(hay);
+}
+
 function iconsIn(root: ParentNode): HTMLElement[] {
   return Array.from(
     root.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
-  ).filter(isIconButton);
+  )
+    .filter(isIconButton)
+    .filter((node) => !isSubmitControl(node));
 }
 
 /** Nearest ancestor that owns the editor and its submit control. */
@@ -49,10 +58,13 @@ function findCommentContainer(editor: HTMLElement): HTMLElement | null {
  */
 function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLElement } | null {
   const editorRect = editor.getBoundingClientRect();
+  const editorDialog = editor.closest('[role="dialog"]');
   const emoji = Array.from(
     document.querySelectorAll<HTMLElement>('[aria-label*="emoji" i], [title*="emoji" i]'),
   )
     .filter(isVisible)
+    // Never borrow an icon from another composer (e.g. a dialog above this one).
+    .filter((node) => node.closest('[role="dialog"]') === editorDialog)
     .map((node) => ({ node, rect: node.getBoundingClientRect() }))
     .filter(({ rect }) => Math.abs(rect.top - editorRect.top) < 220)
     .sort(
@@ -60,13 +72,18 @@ function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLEleme
     )[0];
 
   if (emoji?.node.parentElement) {
-    const row = emoji.node.parentElement;
-    const icons = Array.from(
-      row.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
-    )
-      .filter(isIconButton)
-      .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-    return { row, anchor: icons[icons.length - 1] ?? emoji.node };
+    // The emoji may sit in its own wrapper; climb until we reach the real toolbar row.
+    let row: HTMLElement | null = emoji.node.parentElement;
+    for (let depth = 0; row && depth < 6; depth += 1) {
+      if (iconsIn(row).length >= 2) break;
+      row = row.parentElement;
+    }
+    if (row) {
+      const icons = iconsIn(row).sort(
+        (a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left,
+      );
+      return { row, anchor: icons[icons.length - 1] ?? emoji.node };
+    }
   }
 
   const container = findCommentContainer(editor) ?? editor.parentElement;
@@ -97,6 +114,10 @@ function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLEleme
 export function insertButton(entry: Entry): boolean {
   const toolbar = findToolbar(entry.editor);
   if (toolbar) {
+    // One icon per toolbar, even if two editors map onto the same row.
+    const taken = toolbar.row.querySelector<HTMLElement>('.socialme-quick');
+    if (taken && taken !== entry.button) return false;
+
     let wrapper: HTMLElement = toolbar.anchor;
     while (wrapper.parentElement && wrapper.parentElement !== toolbar.row) {
       wrapper = wrapper.parentElement;
@@ -118,7 +139,17 @@ export function insertButton(entry: Entry): boolean {
     entry.button.style.borderRadius = '50%';
     entry.button.style.lineHeight = '0';
 
-    wrapper.after(entry.button);
+    // If the right-most control is the send/submit action itself, land just
+    // before it; otherwise land after the last real icon.
+    const isSubmit = /^(send|comment|post|reply|share)\b/i.test(labelOf(toolbar.anchor));
+    if (isSubmit) wrapper.before(entry.button);
+    else if (toolbar.row.getAttribute('data-testid') === 'ScrollSnap-List') {
+      // X's toolbar is a horizontal scroller: anything appended inside it gets
+      // clipped. Sit just after the scroller so we stay on the same row.
+      const scroller = toolbar.row.parentElement ?? toolbar.row;
+      const host = scroller.parentElement ?? scroller;
+      host.insertBefore(entry.button, scroller.nextSibling);
+    } else wrapper.after(entry.button);
 
     const align = () => {
       if (!entry.button.isConnected) return;

@@ -115,6 +115,15 @@ export function installComposerButtons(
       event.preventDefault();
       event.stopPropagation();
     });
+    button.addEventListener(
+      'pointerdown',
+      (event) => {
+        // X re-renders its toolbar on pointer events; keep ours out of that path.
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      true,
+    );
     button.addEventListener('mouseenter', () => {
       button.style.background = 'rgba(124,108,255,0.12)';
       button.style.color = '#5b4bdb';
@@ -248,10 +257,24 @@ export function installComposerButtons(
   const onFocus = () => window.setTimeout(scan, 60);
   window.addEventListener('focusin', onFocus, true);
   window.addEventListener('click', onFocus, true);
+
+  // React-based timelines re-render often; put the icon back as soon as it goes.
+  let pending = 0;
+  const observer = new MutationObserver(() => {
+    if (pending) return;
+    pending = window.setTimeout(() => {
+      pending = 0;
+      scan();
+    }, 250);
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
   scan();
 
   return () => {
     stopped = true;
+    observer.disconnect();
+    if (pending) window.clearTimeout(pending);
     window.clearInterval(interval);
     window.removeEventListener('focusin', onFocus, true);
     window.removeEventListener('click', onFocus, true);

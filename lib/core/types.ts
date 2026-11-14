@@ -81,7 +81,10 @@ export interface Persona {
   emojiLevel: 'none' | 'light' | 'moderate';
   hashtagLevel: 'none' | 'light' | 'heavy';
   cta: string;
+  /** Hard cap for this voice's drafts. */
   replyMaxChars: number;
+  /** Preferred length for a new draft; the user can still change it per reply. */
+  length: Length;
   signOff: string;
   language: string;
 }
@@ -144,6 +147,8 @@ export interface Settings {
   /** Per-platform persona override, 'inherit' uses activePersonaId. */
   platformPersona: Record<PlatformId, string>;
   defaults: Defaults;
+  /** Which built-in persona seed generation the stored voices came from. */
+  personaSeedVersion: number;
   /** Platform-agnostic default output mode. */
   outputMode: OutputMode;
   platformOutputMode: Record<PlatformId, OutputMode | 'inherit'>;

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { TONES } from '@/lib/core/constants';
+import { useEffect, useState } from 'react';
+import { LENGTHS, TONES } from '@/lib/core/constants';
 import { newId, STARTER_PERSONAS } from '@/lib/core/defaults';
 import type { Persona, Settings } from '@/lib/core/types';
 import { Button, Card, Field, Input, Segmented, Select, TextArea } from '@/entrypoints/options/ui';
@@ -29,6 +29,11 @@ export function PersonasTab({
 }) {
   const [selectedId, setSelectedId] = useState(settings.activePersonaId);
   const persona = settings.personas.find((p) => p.id === selectedId) ?? settings.personas[0];
+  const [limitDraft, setLimitDraft] = useState(String(persona.replyMaxChars));
+
+  useEffect(() => {
+    setLimitDraft(String(persona.replyMaxChars));
+  }, [persona.id, persona.replyMaxChars]);
 
   const updatePersona = (patch: Partial<Persona>) => {
     onChange({
@@ -68,8 +73,8 @@ export function PersonasTab({
         <h1>Voice &amp; personas</h1>
         <p className="lede">
           A persona is the writing brief the model gets on every call. The more specific it is, the
-          less the output sounds like a generic AI reply. Keep separate personas for LinkedIn
-          thought-leadership and quick X replies.
+          less the output sounds like a generic AI reply. Keep My voice as your default, then switch
+          to a specialised voice when the thread calls for a different angle.
         </p>
       </div>
 
@@ -268,21 +273,32 @@ export function PersonasTab({
             </div>
 
             <div className="grid-2">
-              <Field label="Max reply length" hint={`${persona.replyMaxChars} characters`}>
+              <Field
+                label="Preferred length"
+                hint="Starting length for a new draft with this voice. You can change it per reply."
+              >
                 <Segmented
-                  value={
-                    persona.replyMaxChars <= 320 ? 's' : persona.replyMaxChars <= 700 ? 'm' : 'l'
-                  }
+                  value={persona.length ?? 'medium'}
                   onChange={(value) =>
-                    updatePersona({
-                      replyMaxChars: value === 's' ? 300 : value === 'm' ? 700 : 1100,
-                    })
+                    updatePersona({ length: value as Persona['length'] })
                   }
-                  options={[
-                    { value: 's', label: 'Short' },
-                    { value: 'm', label: 'Medium' },
-                    { value: 'l', label: 'Long' },
-                  ]}
+                  options={LENGTHS.map((length) => ({ value: length.id, label: length.label }))}
+                />
+              </Field>
+              <Field label="Character limit" hint="Hard cap in characters (80-2000).">
+                <Input
+                  value={limitDraft}
+                  onChange={setLimitDraft}
+                  onBlur={() => {
+                    const parsed = Number(limitDraft);
+                    const next =
+                      Number.isFinite(parsed) && parsed > 0
+                        ? Math.max(80, Math.min(2000, Math.round(parsed)))
+                        : persona.replyMaxChars;
+                    setLimitDraft(String(next));
+                    if (next !== persona.replyMaxChars) updatePersona({ replyMaxChars: next });
+                  }}
+                  monospace
                 />
               </Field>
             </div>

@@ -5,6 +5,11 @@
 import { buildPrompt } from '../lib/core/ai/prompt.ts';
 import { buildTranscript } from '../lib/integrations/messaging.ts';
 import { analyzeDraft } from '../lib/core/ai/quality.ts';
+import {
+  mergeSettings,
+  seedPersonas,
+  PERSONA_SEED_VERSION,
+} from '../lib/core/defaults.ts';
 
 let passed = 0;
 let failed = 0;
@@ -35,6 +40,7 @@ const persona = {
   hashtagLevel: 'light',
   cta: '',
   replyMaxChars: 700,
+  length: 'medium',
   signOff: '',
   language: 'auto',
 };
@@ -238,6 +244,116 @@ ok('dm: forces an answer to the last line', /LAST line/i.test(dm.user));
 ok('dm: warns against generic questions', /generic question/i.test(dm.user));
 ok('dm: smaller token budget', dm.maxTokens <= 500);
 ok('dm: keeps brand context', dm.system.includes('WHAT I AM BUILDING'));
+
+/* ---------------------------- persona voice --------------------------- */
+
+const shortPersona = { ...persona, length: 'short' };
+const shortReply = buildPrompt({
+  request: { channel: 'comment', platform: 'linkedin', post },
+  persona: shortPersona,
+  platform: 'linkedin',
+});
+ok(
+  'persona: preferred length is used when the request omits one',
+  shortReply.user.includes('120-260 characters'),
+);
+
+const ctaPersona = { ...persona, cta: 'Ask what they tried' };
+const ctaReply = buildPrompt({
+  request: { channel: 'comment', platform: 'linkedin', post },
+  persona: ctaPersona,
+  platform: 'linkedin',
+});
+ok('persona: optional CTA reaches the prompt', ctaReply.system.includes('Ask what they tried'));
+ok('persona: no CTA line when unset', !reply.system.includes('Optional call to action'));
+
+ok(
+  'banned: new phrases reach the prompt',
+  reply.system.includes('paradigm shift') && reply.system.includes('nailed it'),
+);
+const bannedDraft = analyzeDraft('Nailed it. Absolutely a paradigm shift.', 'linkedin', 700);
+ok('banned: quality flags the new opener', bannedDraft.bannedOpener === 'nailed it');
+ok('banned: quality flags the new cliche', bannedDraft.cliches.includes('paradigm shift'));
+
+/* ------------------------- persona migration -------------------------- */
+
+const legacyPersonas = [
+  {
+    ...persona,
+    id: 'p_default',
+    name: 'My voice',
+    emoji: '🙂',
+    styleNotes: 'My custom voice.',
+    replyMaxChars: 420,
+  },
+  {
+    ...persona,
+    id: 'p_expert',
+    name: 'Thought leader',
+    emoji: '🧠',
+    role: 'Operator with 8 years of hands-on experience',
+    tone: 'Analytical and precise',
+    niche: 'Product, growth and building software teams',
+    audience: 'Founders, product leads and engineers',
+    styleNotes: 'My custom thought-leader style.',
+    avoid: 'Generic advice, hedging, listicles in comments.',
+    replyMaxChars: 700,
+    hashtagLevel: 'light',
+  },
+  { ...persona, id: 'p_custom', name: 'Mine', role: 'Custom role' },
+];
+
+const storedLegacy = {
+  version: 2,
+  activePersonaId: 'p_default',
+  personas: legacyPersonas,
+  platformPersona: { linkedin: 'p_custom', x: 'inherit', facebook: 'inherit' },
+};
+
+const migrated = mergeSettings(storedLegacy);
+const byId = (list, id) => list.find((p) => p.id === id);
+
+ok(
+  'migration: My voice keeps the user values',
+  byId(migrated.personas, 'p_default')?.styleNotes === 'My custom voice.' &&
+    byId(migrated.personas, 'p_default')?.replyMaxChars === 420,
+);
+ok(
+  'migration: seeded fields update when untouched',
+  byId(migrated.personas, 'p_expert')?.emoji === '🎯' &&
+    byId(migrated.personas, 'p_expert')?.replyMaxChars === 500,
+);
+ok(
+  'migration: edited fields are preserved',
+  byId(migrated.personas, 'p_expert')?.styleNotes === 'My custom thought-leader style.',
+);
+ok(
+  'migration: missing built-in voices are added',
+  ['p_casual', 'p_architect', 'p_ai', 'p_product', 'p_security', 'p_mentor'].every((id) =>
+    Boolean(byId(migrated.personas, id)),
+  ),
+);
+ok(
+  'migration: user personas survive',
+  byId(migrated.personas, 'p_custom')?.role === 'Custom role',
+);
+ok(
+  'migration: no duplicate ids',
+  new Set(migrated.personas.map((p) => p.id)).size === migrated.personas.length,
+);
+ok('migration: active voice unchanged', migrated.activePersonaId === 'p_default');
+ok(
+  'migration: per-platform overrides unchanged',
+  migrated.platformPersona.linkedin === 'p_custom',
+);
+ok('migration: seed version recorded', migrated.personaSeedVersion === PERSONA_SEED_VERSION);
+
+const twice = seedPersonas(migrated.personas);
+ok(
+  'migration: idempotent',
+  twice.length === migrated.personas.length &&
+    twice.every((p, i) => p.id === migrated.personas[i].id),
+);
 
 /* ------------------------------ quality ------------------------------ */
 

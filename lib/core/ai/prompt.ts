@@ -97,6 +97,9 @@ function voiceBlock(persona: Persona): string {
   if (persona.styleNotes) lines.push(`- How I write: ${persona.styleNotes}`);
   if (persona.avoid) lines.push(`- What I never do: ${persona.avoid}`);
   if (persona.bannedWords) lines.push(`- Words I never use: ${persona.bannedWords}`);
+  if (persona.cta) {
+    lines.push(`- Optional call to action, only if it fits naturally: ${persona.cta}`);
+  }
   if (persona.signOff) lines.push(`- Optional sign-off: ${persona.signOff}`);
   return lines.join('\n');
 }
@@ -132,8 +135,9 @@ const HARD_RULES = `NON-NEGOTIABLE RULES
 - Never mention being an AI, a model, an assistant, or that this is generated.
 - Never reference "the post" or "your post" as an object. Just talk about the idea.
 - Never invent statistics, client names, revenue numbers, or case studies. If a number is not given to you or in my notes, describe the result qualitatively instead.
-- Do not start with: ${BANNED_OPENERS.slice(0, 6).join(', ')}.
-- Do not use these words: ${CLICHE_WORDS.slice(0, 12).join(', ')}.
+- Never invent first-person experiences, anecdotes, or results. Only use what is in my notes or in the source.
+- Do not start with: ${BANNED_OPENERS.join(', ')}.
+- Do not use these words or phrases: ${CLICHE_WORDS.join(', ')}.
 - Avoid em dashes. Avoid the "It's not X, it's Y" construction. Avoid three-item lists that exist only to sound complete.
 - Vary sentence length. One idea per sentence. Concrete nouns beat abstractions.
 - Sound like a specific human writing quickly on their phone, not like marketing copy.
@@ -188,7 +192,7 @@ export function buildPrompt(ctx: BuildContext): BuiltPrompt {
   const { request, persona, platform, brand } = ctx;
   const channel = request.channel;
   const angle: Angle = request.angle ?? 'insight';
-  const length: Length = request.length ?? 'medium';
+  const length: Length = request.length ?? persona.length ?? 'medium';
   const tone = request.tone?.trim() || persona.tone;
   const language = languageOf(persona, request);
   const guide = PLATFORM_GUIDE[platform];

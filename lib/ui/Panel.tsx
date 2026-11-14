@@ -114,8 +114,8 @@ export function Panel({
   );
 
   useEffect(() => {
-    setLength(settings.defaults.replyLength);
-  }, [settings.defaults.replyLength]);
+    setLength(persona.length ?? settings.defaults.replyLength);
+  }, [persona.id, persona.length, settings.defaults.replyLength]);
 
   useEffect(() => {
     if (!settings.personas.some((p) => p.id === personaId)) {

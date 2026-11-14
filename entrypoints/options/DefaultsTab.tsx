@@ -48,7 +48,10 @@ export function DefaultsTab({
           </Field>
         </div>
 
-        <Field label="Reply length">
+        <Field
+          label="Fallback reply length"
+          hint="Used only when a persona has no preferred length."
+        >
           <Segmented
             value={defaults.replyLength}
             onChange={(value) => onChange({ defaults: { ...defaults, replyLength: value } })}

@@ -52,6 +52,7 @@ export function Field({
 export function Input({
   value,
   onChange,
+  onBlur,
   placeholder,
   type = 'text',
   password,
@@ -59,6 +60,7 @@ export function Input({
 }: {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   type?: string;
   password?: boolean;
@@ -73,6 +75,7 @@ export function Input({
       spellCheck={false}
       autoComplete="off"
       onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
+      onBlur={onBlur}
     />
   );
 }

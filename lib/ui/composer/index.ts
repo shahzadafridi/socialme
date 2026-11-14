@@ -230,7 +230,7 @@ export function installComposerButtons(
         personaId: persona.id,
         angle: settings.defaults.angle,
         tone: tone ?? (settings.defaults.tone || undefined),
-        length: settings.defaults.replyLength,
+        length: persona.length ?? settings.defaults.replyLength,
         language: persona.language,
         extra:
           [settings.defaults.extraInstruction, choice.instruction].filter(Boolean).join('; ') ||

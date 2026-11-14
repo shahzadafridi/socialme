@@ -27,7 +27,14 @@ async function write(key: string, value: unknown): Promise<void> {
 
 export async function getSettings(): Promise<Settings> {
   const stored = await read<Settings>(STORAGE_KEYS.settings);
-  return mergeSettings(stored ?? defaultSettings());
+  if (!stored) return defaultSettings();
+  const merged = mergeSettings(stored);
+  // Persist the new persona seeds once, so a deleted built-in voice stays deleted
+  // instead of being re-added on every read.
+  if (stored.personaSeedVersion !== merged.personaSeedVersion) {
+    await write(STORAGE_KEYS.settings, merged);
+  }
+  return merged;
 }
 
 export async function saveSettings(next: Settings): Promise<void> {

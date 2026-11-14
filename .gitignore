@@ -1,0 +1,10 @@
+node_modules
+.wxt
+.output
+dist
+.tmp
+stats.html
+.DS_Store
+*.log
+.env
+.env.*

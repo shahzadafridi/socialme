@@ -1,0 +1,30 @@
+{
+  "name": "socialme",
+  "private": true,
+  "version": "0.5.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "compile": "tsc --noEmit",
+    "test": "npm run test:logic && npm run test:e2e",
+    "test:logic": "rolldown scripts/selftest.mjs --format esm --file .tmp/selftest.mjs && node .tmp/selftest.mjs",
+    "test:e2e": "wxt build && node scripts/e2e.mjs",
+    "preview": "vite --config preview/vite.config.ts",
+    "postinstall": "wxt prepare",
+    "test:live": "wxt build && node scripts/livetest.mjs",
+    "test:all": "npm run test:logic && npm run test:e2e && npm run test:live"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "wxt": "^0.21.5"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

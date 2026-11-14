@@ -1,0 +1,13 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": true
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".wxt/**/*"],
+  "exclude": ["node_modules", "dist", ".output", "preview/vite.config.ts"]
+}

@@ -1,4 +1,4 @@
-import { isMac } from '@/lib/shared/dom';
+import { deepQueryAll, isMac, isVisible } from '@/lib/shared/dom';
 
 const normalize = (value: string): string =>
   value
@@ -35,6 +35,22 @@ export function placeCaretAtEnd(editor: HTMLElement): void {
   selection.addRange(range);
 }
 
+/**
+ * X's chat recreates its composer when focus moves, so a cached reference can
+ * point at a dead node. Re-resolve by data-testid inside the same tree.
+ */
+export function freshestEditor(editor: HTMLElement): HTMLElement {
+  if (!(editor instanceof HTMLTextAreaElement)) return editor;
+  if (editor.isConnected) return editor;
+  const testId = editor.getAttribute('data-testid');
+  if (!testId) return editor;
+  // The old node is gone (shadow DOM included), so search from the document.
+  const match = deepQueryAll<HTMLTextAreaElement>(`textarea[data-testid="${testId}"]`).find(
+    isVisible,
+  );
+  return match ?? editor;
+}
+
 /** Remove everything an editor currently holds, keeping its model in sync. */
 export function clearEditor(editor: HTMLElement): void {
   if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
@@ -56,7 +72,16 @@ export function clearEditor(editor: HTMLElement): void {
   if ((editor.innerText ?? '').trim().length > 0) editor.textContent = '';
 }
 
-function insertIntoInput(el: HTMLInputElement | HTMLTextAreaElement, text: string): boolean {
+async function insertIntoInput(
+  el: HTMLInputElement | HTMLTextAreaElement,
+  text: string,
+): Promise<boolean> {
+  const landed = () => el.value.includes(normalize(text).slice(0, 20));
+
+  el.focus();
+
+  // Write through the prototype setter so React's value tracker notices the
+  // change: that makes the framework own the text, so its next render keeps it.
   const proto =
     el instanceof HTMLTextAreaElement
       ? HTMLTextAreaElement.prototype
@@ -64,9 +89,21 @@ function insertIntoInput(el: HTMLInputElement | HTMLTextAreaElement, text: strin
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (setter) setter.call(el, text);
   else el.value = text;
+  // Only `input`: a `change` event makes some editors commit/clear the draft.
   el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-  return el.value.includes(normalize(text).slice(0, 20));
+
+  // Give the framework a beat to reconcile before deciding it failed.
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  if (landed()) return true;
+
+  // Fall back to the editing pipeline for fields with their own key handling.
+  try {
+    el.select();
+    if (document.execCommand('insertText', false, text) && landed()) return true;
+  } catch {
+    // nothing else to try
+  }
+  return landed();
 }
 
 function insertWithExecCommand(editor: HTMLElement, text: string): boolean {
@@ -140,7 +177,7 @@ export async function insertIntoEditor(editor: HTMLElement, text: string): Promi
   editor.focus();
 
   if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
-    return insertIntoInput(editor, text);
+    return await insertIntoInput(editor, text);
   }
 
   if (!editor.isContentEditable && !editor.getAttribute('contenteditable')) {

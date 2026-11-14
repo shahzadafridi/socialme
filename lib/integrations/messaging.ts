@@ -1,4 +1,4 @@
-import { isVisible } from '@/lib/shared/dom';
+import { deepQueryAll, isVisible, rootOf } from '@/lib/shared/dom';
 import { normalizeText } from '@/lib/integrations/adapter';
 
 const MESSAGE_HINT = /message|messenger|chat|dm\b|reply to/i;
@@ -36,9 +36,7 @@ function inMessagingContainer(node: HTMLElement): boolean {
  * their "comment" label, so the same page can host both.
  */
 export function findMessageComposers(): HTMLElement[] {
-  return Array.from(
-    document.querySelectorAll<HTMLElement>('[contenteditable="true"], textarea'),
-  ).filter((node) => {
+  return deepQueryAll<HTMLElement>('[contenteditable="true"], textarea').filter((node) => {
     if (!isVisible(node)) return false;
     const label = labelOf(node);
     if (/comment/i.test(label)) return false;
@@ -295,7 +293,8 @@ function linkedinThread(maxMessages: number): { author: string; text: string } |
 }
 
 function messageList(composer: HTMLElement, editor: HTMLElement): HTMLElement | null {
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>('div, section, ul, main'))
+  const scope = rootOf(composer);
+  const candidates = Array.from(scope.querySelectorAll<HTMLElement>('div, section, ul, main'))
     .filter((node) => {
       // Ancestors are allowed: the composer lives *inside* the thread wrapper,
       // and bubblesIn() already excludes the composer subtree.

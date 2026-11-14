@@ -19,6 +19,35 @@ export function isVisible(el: Element | null | undefined): boolean {
   return style.visibility !== 'hidden' && style.display !== 'none';
 }
 
+const OWN_HOST = 'socialme-shadow-host';
+
+/**
+ * querySelectorAll that also walks open shadow roots. X's chat UI (and parts of
+ * Messenger's) render inside a shadow root, where document queries see nothing.
+ */
+export function deepQueryAll<T extends Element = HTMLElement>(
+  selector: string,
+  root: ParentNode = document,
+): T[] {
+  const found: T[] = [];
+  const walk = (node: ParentNode) => {
+    found.push(...Array.from(node.querySelectorAll<T>(selector)));
+    for (const el of Array.from(node.querySelectorAll<HTMLElement>('*'))) {
+      if (el.id === OWN_HOST) continue;
+      const shadow = el.shadowRoot;
+      if (shadow) walk(shadow as unknown as ParentNode);
+    }
+  };
+  walk(root);
+  return found;
+}
+
+/** The tree a node really lives in (its shadow root, or the document). */
+export function rootOf(node: Node): ParentNode {
+  const root = node.getRootNode();
+  return (root instanceof ShadowRoot ? root : document) as ParentNode;
+}
+
 export async function waitFor<T>(
   probe: () => T | null | undefined,
   { timeout = 6000, interval = 120 }: { timeout?: number; interval?: number } = {},

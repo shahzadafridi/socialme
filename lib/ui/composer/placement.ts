@@ -1,4 +1,4 @@
-import { isVisible } from '@/lib/shared/dom';
+import { deepQueryAll, isVisible, rootOf } from '@/lib/shared/dom';
 import type { Entry } from '@/lib/ui/composer/button';
 
 function isIconButton(node: HTMLElement): boolean {
@@ -59,8 +59,10 @@ function findCommentContainer(editor: HTMLElement): HTMLElement | null {
 function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLElement } | null {
   const editorRect = editor.getBoundingClientRect();
   const editorDialog = editor.closest('[role="dialog"]');
-  const emoji = Array.from(
-    document.querySelectorAll<HTMLElement>('[aria-label*="emoji" i], [title*="emoji" i]'),
+  const scope = rootOf(editor);
+  const emoji = deepQueryAll<HTMLElement>(
+    '[aria-label*="emoji" i], [title*="emoji" i]',
+    scope,
   )
     .filter(isVisible)
     // Never borrow an icon from another composer (e.g. a dialog above this one).
@@ -90,7 +92,7 @@ function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLEleme
   let icons = container ? iconsIn(container) : [];
 
   if (icons.filter((node) => MEDIA_ICON.test(labelOf(node))).length < 2) {
-    const near = iconsIn(document).filter((node) => {
+    const near = iconsIn(scope).filter((node) => {
       const rect = node.getBoundingClientRect();
       return (
         Math.abs(rect.top - editorRect.top) < 110 && Math.abs(rect.bottom - editorRect.bottom) < 160
@@ -112,6 +114,34 @@ function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLEleme
 }
 
 export function insertButton(entry: Entry): boolean {
+  // Textarea composers (X chat) keep their icon row to the left of the field:
+  // sit immediately before the field so the icon reads as the last one.
+  if (entry.editor.tagName === 'TEXTAREA' && entry.editor.parentElement) {
+    // Climb to the row that also holds the icon buttons, then sit just before
+    // the field's box so the icon reads as the last one before the message.
+    let box: HTMLElement = entry.editor;
+    let parent = box.parentElement;
+    for (let depth = 0; parent && depth < 3; depth += 1) {
+      // Stop at the field's own wrapper: adding a row child can break X's
+      // grid layout, but a child of the field keeps the composer intact.
+      if (parent.querySelector('button, [role="button"]')) break;
+      box = parent;
+      parent = parent.parentElement;
+    }
+    if (parent) {
+      const sibling = parent.querySelector<HTMLElement>('button, [role="button"]');
+      const size = Math.min(40, Math.max(24, Math.round(sibling?.offsetWidth || 32)));
+      entry.button.style.width = `${size}px`;
+      entry.button.style.height = `${size}px`;
+      entry.button.style.margin = '0 2px';
+      entry.button.style.alignSelf = 'center';
+      entry.button.style.borderRadius = '50%';
+      entry.button.style.flex = 'none';
+      parent.insertBefore(entry.button, box);
+      return entry.button.isConnected;
+    }
+  }
+
   const toolbar = findToolbar(entry.editor);
   if (toolbar) {
     // One icon per toolbar, even if two editors map onto the same row.

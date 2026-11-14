@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import {
   clearEditor,
+  freshestEditor,
   insertIntoEditor,
   looksInserted,
   placeCaretAtEnd,
@@ -51,14 +52,18 @@ async function finish(
   }
 
   if (!looksInserted(entry.editor, clean)) {
-    clearEditor(entry.editor);
+    const target = freshestEditor(entry.editor);
+    clearEditor(target);
     const typed = settings.safety.humanTyping
-      ? await typeLikeHuman(entry.editor, clean, settings.safety.typingSpeed)
-      : await insertIntoEditor(entry.editor, clean);
+      ? await typeLikeHuman(target, clean, settings.safety.typingSpeed)
+      : await insertIntoEditor(target, clean);
     if (!typed) {
       setState(entry, 'error', 'The editor rejected the text');
       return;
     }
+    // Frameworks sometimes replay their own empty state right after our write.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (!looksInserted(target, clean)) await insertIntoEditor(freshestEditor(target), clean);
   }
 
   await saveLastDraft(clean);
@@ -170,7 +175,7 @@ export function installComposerButtons(
 
       const persona = resolvePersona(settings, adapter.id);
 
-      clearEditor(editor);
+      if (!(editor instanceof HTMLTextAreaElement)) clearEditor(editor);
       entry.text = '';
       entry.busy = true;
       setState(entry, 'busy');
@@ -200,10 +205,14 @@ export function installComposerButtons(
       }
       entry.port = port;
 
+      // Textarea composers (X chat) are framework-owned: stream into our own
+      // buffer and write once, so a single input event carries the whole draft.
+      const buffered = editor instanceof HTMLTextAreaElement;
+
       port.onMessage.addListener((message: PortMessage) => {
         if (message.type === 'delta') {
           entry.text += message.text;
-          appendDelta(editor, message.text);
+          if (!buffered) appendDelta(editor, message.text);
         } else if (message.type === 'done') {
           void finish(entry, message.text, settings, adapter, context.text);
         } else if (message.type === 'error') {

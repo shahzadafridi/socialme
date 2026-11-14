@@ -8,7 +8,7 @@ export default defineConfig({
     short_name: 'SocialMe',
     description:
       'Turn any post into a sharp reply in your own voice. Brand-first, human-paced, with account limits that keep you out of trouble.',
-    version: '0.5.24',
+    version: '0.5.25',
     permissions: ['storage'],
     host_permissions: [
       'https://api.openai.com/*',

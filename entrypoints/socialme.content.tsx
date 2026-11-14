@@ -6,6 +6,7 @@ import { startWarningWatch } from '@/lib/features/safety/watch';
 import { collectDiagnostics } from '@/lib/features/diagnostics';
 import { getSettings, watchSettings } from '@/lib/data/storage';
 import { installComposerButtons } from '@/lib/ui/composer/index';
+import { checkPlatformHealth, saveHealth } from '@/lib/ui/composer/health';
 import { App } from '@/lib/ui/App';
 import styles from '@/lib/ui/theme.css?inline';
 
@@ -68,6 +69,22 @@ function mount(): void {
 
   window.setTimeout(() => void collectDiagnostics(adapter, boot), 2500);
   window.setInterval(() => void collectDiagnostics(adapter, boot), 30000);
+
+  // Health: what the adapters can reach right now. A redesign shows up here
+  // (and in Options → Data) instead of failing silently for every user.
+  const runHealth = () => {
+    try {
+      const health = checkPlatformHealth(adapter);
+      void saveHealth(health);
+      if (!health.ok) {
+        console.warn('[SocialMe] composer health', health.problems.join('; '), health);
+      }
+    } catch (error) {
+      console.warn('[SocialMe] health check failed', error);
+    }
+  };
+  window.setTimeout(runHealth, 4000);
+  window.setInterval(runHealth, 20000);
 }
 
 export default defineContentScript({

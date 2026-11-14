@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { readDiagnostics, type Diagnostics } from '@/lib/features/diagnostics';
+import { readHealth, type PlatformHealth } from '@/lib/ui/composer/health';
 import { exportAll, importAll, clearHistory, getHistory } from '@/lib/data/storage';
 import type { Settings } from '@/lib/core/types';
 import { Button, Card, Note } from '@/entrypoints/options/ui';
@@ -7,6 +8,7 @@ import { Button, Card, Note } from '@/entrypoints/options/ui';
 export function DataTab({ onChange }: { onChange: (patch: Partial<Settings>) => void }) {
   const [historyCount, setHistoryCount] = useState(0);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
+  const [health, setHealth] = useState<Record<string, PlatformHealth>>({});
   const [message, setMessage] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -22,7 +24,28 @@ export function DataTab({ onChange }: { onChange: (patch: Partial<Settings>) => 
     readDiagnostics().then(setDiagnostics).catch(() => undefined);
   };
 
+  const refreshHealth = () => {
+    readHealth().then(setHealth).catch(() => undefined);
+  };
+
   useEffect(refreshDiagnostics, []);
+  useEffect(refreshHealth, []);
+
+  const copyReport = async () => {
+    const report = {
+      version: Object.values(health)[0]?.version ?? 'unknown',
+      generated: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      health,
+      scan: diagnostics,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      setMessage('Report copied. Paste it into a GitHub issue — it has no message content.');
+    } catch {
+      setMessage('Could not copy the report.');
+    }
+  };
 
   const download = async () => {
     try {
@@ -91,6 +114,57 @@ export function DataTab({ onChange }: { onChange: (patch: Partial<Settings>) => 
             Clear draft history
           </Button>
         </div>
+      </Card>
+
+      <Card
+        title="Composer health"
+        desc="Live check of the reply boxes the extension can reach. If a platform redesigns, the surface turns red here first."
+        right={
+          <Button small variant="ghost" onClick={() => { refreshHealth(); refreshDiagnostics(); }}>
+            Check
+          </Button>
+        }
+      >
+        {Object.keys(health).length ? (
+          <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+            {Object.values(health).map((item) => (
+              <div key={item.platform} style={{ marginBottom: 8 }}>
+                <div>
+                  <b>{item.platform}</b>{' '}
+                  <span style={{ color: item.ok ? 'var(--good)' : 'var(--bad)' }}>
+                    {item.ok ? 'all surfaces ok' : `${item.problems.length} problem${item.problems.length === 1 ? '' : 's'}`}
+                  </span>{' '}
+                  <span style={{ color: 'var(--muted)' }}>
+                    v{item.version} · {new Date(item.ts).toLocaleTimeString()}
+                  </span>
+                </div>
+                {item.surfaces.map((surface, index) => (
+                  <div
+                    key={`${surface.mode}-${index}`}
+                    style={{ color: surface.ok ? 'var(--muted)' : 'var(--bad)', fontFamily: 'var(--mono)', fontSize: 11.5 }}
+                  >
+                    {surface.ok ? 'ok ' : 'bad'} {surface.mode.padEnd(7)} {surface.editor} ·{' '}
+                    {surface.strategy} · submit={String(surface.submit)} · context={String(surface.context)}
+                  </div>
+                ))}
+                {item.problems.map((problem) => (
+                  <div key={problem} style={{ color: 'var(--bad)', fontSize: 11.5 }}>
+                    {problem}
+                  </div>
+                ))}
+                <div style={{ color: 'var(--muted)', fontSize: 11 }}>{item.url}</div>
+              </div>
+            ))}
+            <Button small variant="ghost" onClick={copyReport}>
+              Copy report
+            </Button>
+          </div>
+        ) : (
+          <div className="card__desc">
+            No health snapshot yet. Open LinkedIn, X or Facebook and wait a few seconds, then press
+            Check.
+          </div>
+        )}
       </Card>
 
       <Card

@@ -1,3 +1,4 @@
+import { browser } from 'wxt/browser';
 import { useEffect, useRef, useState } from 'react';
 import { APP_NAME, PROVIDER_PRESETS } from '@/lib/core/constants';
 import {
@@ -102,7 +103,7 @@ export function OptionsApp({ initialTab }: { initialTab?: TabId } = {}) {
           <div className="brand__mark">✦</div>
           <div>
             <div className="brand__name">{APP_NAME}</div>
-            <div className="brand__ver">v0.1.0 · local-first</div>
+            <div className="brand__ver">v{browser.runtime.getManifest().version} · local-first</div>
           </div>
         </div>
 

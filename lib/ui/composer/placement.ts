@@ -56,7 +56,14 @@ function findCommentContainer(editor: HTMLElement): HTMLElement | null {
  * The media toolbar of a comment box or message composer. Anchors on the emoji
  * control, then takes the right-most icon so our button lands last in the row.
  */
-function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLElement } | null {
+export interface Toolbar {
+  row: HTMLElement;
+  anchor: HTMLElement;
+  /** Which detection path matched — surfaced by the health check. */
+  strategy: 'emoji-row' | 'icon-row' | 'near-editor';
+}
+
+export function findToolbar(editor: HTMLElement): Toolbar | null {
   const editorRect = editor.getBoundingClientRect();
   const editorDialog = editor.closest('[role="dialog"]');
   const scope = rootOf(editor);
@@ -84,13 +91,14 @@ function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLEleme
       const icons = iconsIn(row).sort(
         (a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left,
       );
-      return { row, anchor: icons[icons.length - 1] ?? emoji.node };
+      return { row, anchor: icons[icons.length - 1] ?? emoji.node, strategy: 'emoji-row' };
     }
   }
 
   const container = findCommentContainer(editor) ?? editor.parentElement;
   let icons = container ? iconsIn(container) : [];
 
+  let strategy: Toolbar['strategy'] = 'icon-row';
   if (icons.filter((node) => MEDIA_ICON.test(labelOf(node))).length < 2) {
     const near = iconsIn(scope).filter((node) => {
       const rect = node.getBoundingClientRect();
@@ -98,7 +106,10 @@ function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLEleme
         Math.abs(rect.top - editorRect.top) < 110 && Math.abs(rect.bottom - editorRect.bottom) < 160
       );
     });
-    if (near.length >= 2) icons = near;
+    if (near.length >= 2) {
+      icons = near;
+      strategy = 'near-editor';
+    }
   }
 
   if (icons.length < 2) return null;
@@ -110,7 +121,7 @@ function findToolbar(editor: HTMLElement): { row: HTMLElement; anchor: HTMLEleme
   const last = pool[pool.length - 1];
   const row = last.parentElement ?? container ?? editor.parentElement;
   if (!row) return null;
-  return { row, anchor: last };
+  return { row, anchor: last, strategy };
 }
 
 export function insertButton(entry: Entry): boolean {

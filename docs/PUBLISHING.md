@@ -79,32 +79,29 @@ Write sharp, on-brand replies on LinkedIn, X and Facebook. Human-paced and accou
 **Detailed description** (paste as-is):
 
 ```
-SocialMe helps you reply to posts and messages in your own voice — on LinkedIn, X and Facebook — without sounding like a template.
+I built SocialMe because I was spending ten minutes on every comment and still writing "Great post!" most of the time.
 
-WHY IT EXISTS
-Good comments take ten minutes each. Most people give up and write "Great post!", which nobody reads. SocialMe reads the post, writes a specific reply that fits the conversation, and types it into the real comment box. You stay the author.
+It adds a small star icon to the comment box. Click it, pick a tone, and it writes a reply that refers to what the post actually says. You can add an instruction first ("mention the 2-week launch"), or just press Generate. The text lands in the box, you edit if you want, and you press Comment yourself.
 
-WHAT IT DOES
-• A ✦ icon in the comment toolbar. Pick a tone, optionally add an instruction ("mention the 2-week launch"), and the reply streams straight into the field.
-• The same icon in DM composers. It reads the thread and answers the last message from the other person.
-• A full panel with eight angles (insight, respectful pushback, sharp question, personal story, number/result, tactical tip, add momentum, punchy), tone, length and a quality score.
-• New post and repurpose modes for your own content.
-• A brand model — positioning, pillars, proof, point of view — applied to every draft, so the writing sounds like you and not like a generic assistant.
+The same works in direct messages: open a conversation, click the star, and it answers the last message the other person sent you.
 
-ACCOUNT SAFETY
-• Off by default: nothing is published without your click.
-• Hourly and daily caps, a minimum gap between actions, and a warm-up period for new accounts.
-• Character-by-character typing and human-paced clicking.
-• Automatic pause when the platform shows a restriction banner or a verification challenge.
+There is a full panel too, with angles such as a sharp question, a personal story or respectful disagreement, plus tone, length and a rough quality score. New post and repurpose are there when you want to write your own content.
 
-BRING YOUR OWN KEY
-Works with OpenAI, DeepSeek, OpenRouter, Google Gemini, Anthropic, Ollama (local) or any OpenAI-compatible endpoint. Your key stays in your browser and is sent only to the provider you chose.
+What makes it sound like you is Brand and Voice: your positioning, the topics you want to be known for, the things you never say, and two or three posts you actually wrote.
 
-PRIVACY
-No accounts, no telemetry, no SocialMe server. Settings, keys and drafts live in your browser. The only network request is the one to your AI provider.
+On safety: it types at a human pace, keeps hourly and daily caps, and stops itself if the platform shows a warning. Auto-posting is off by default.
+
+You connect your own AI account with an API key and pay that provider directly. Your key stays in your browser, and there is no account, no analytics and no server of mine.
+
+If a platform changes its layout and something stops working, tell me and I will fix it.
 
 Not affiliated with LinkedIn, X or Meta.
 ```
+
+> **Do not list AI provider names in the description.** v0.5.0 was rejected under "Yellow Argon"
+> (keyword spam) for the line `OpenAI, DeepSeek, OpenRouter, Google Gemini, Claude, or a local model`.
+> The listing must describe what the extension does, not enumerate brands. Provider names belong in
+> the settings UI and the README, not in store metadata.
 
 **Category:** Productivity
 **Language:** English

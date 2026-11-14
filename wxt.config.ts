@@ -7,7 +7,7 @@ export default defineConfig({
     name: 'SocialMe — Build your brand on LinkedIn, X & Facebook',
     short_name: 'SocialMe',
     description:
-      'Turn any post into a sharp reply in your own voice. Brand-first, human-paced, with account limits that keep you out of trouble.',
+      'Write sharp, on-brand comments, message replies and connection notes in your own voice. Human-paced and account-safe.',
     permissions: ['storage'],
     host_permissions: [
       'https://api.openai.com/*',

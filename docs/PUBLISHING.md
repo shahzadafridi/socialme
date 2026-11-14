@@ -8,7 +8,7 @@ Everything an upload needs is prepared here. What only you can do is marked **Yo
 
 | Item | Where / status |
 |---|---|
-| Uploadable package | `dist/socialme-0.5.0-chrome.zip` (Manifest V3) |
+| Uploadable package | `dist/socialme-<version>-chrome.zip` (Manifest V3, `npm run zip`) |
 | Store icon 128×128 | baked into the package (`icon/128.png`) |
 | Screenshots 1280×800 ×3 | `docs/store/screenshot-1.png` … `-3.png` |
 | Promo tile 440×280 | `docs/store/promo-440x280.png` |
@@ -41,7 +41,8 @@ npm run build
 npm run zip
 ```
 
-Output: `dist/socialme-0.5.0-chrome.zip`. Upload **the zip**, not the folder.
+Output: `dist/socialme-<version>-chrome.zip`. Upload **the zip**, not the folder. The version comes
+from `package.json`; do not set it in `wxt.config.ts`.
 
 Check before uploading:
 
@@ -54,7 +55,7 @@ Check before uploading:
 ## 3. Create the item (You)
 
 1. Dashboard → **New item**.
-2. Upload `dist/socialme-0.5.0-chrome.zip`.
+2. Upload `dist/socialme-<version>-chrome.zip`.
 3. Fill the tabs below, then **Submit for review**.
 
 Review usually takes from a few hours to three working days. A rejection names the policy and lets
@@ -191,9 +192,65 @@ That is normally accepted.
 
 ---
 
-## 9. Updating a published item (You)
+## 9. Releases (automated)
 
-1. Bump `version` in `wxt.config.ts` **and** `package.json`.
+Once the item exists (§3), publishing is handled by GitHub Actions — no dashboard upload.
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | every push to `main`, every PR | typecheck, logic tests, extension e2e, builds and uploads the zip |
+| `release.yml` | a `v*` tag, or manual dispatch | re-runs `ci.yml`, builds the zip, uploads it to the Chrome Web Store and submits it for review, then creates the GitHub release |
+
+### One-time setup (You)
+
+1. **Chrome Web Store API access.** In the Google Cloud console create (or pick) a project, enable
+   the **Chrome Web Store API**, then create a **service account** and a **JSON key**.
+2. **Give the service account publishing rights.** In the
+   [developer dashboard](https://chrome.google.com/webstore/devconsole), open the publisher settings
+   and add the service account email (`…@….iam.gserviceaccount.com`) as a user who can publish the
+   item.
+3. **Collect the IDs.** The extension ID is in the item's dashboard URL; the publisher ID is on the
+   publisher settings page.
+4. **Store the values in the repository.** Settings → Secrets and variables → Actions:
+
+   | Kind | Name | Value |
+   |---|---|---|
+   | Variable | `CWS_EXTENSION_ID` | the 32-character item ID |
+   | Variable | `CWS_PUBLISHER_ID` | the publisher ID |
+   | Secret | `CWS_SERVICE_ACCOUNT_CLIENT_EMAIL` | `client_email` from the JSON key |
+   | Secret | `CWS_SERVICE_ACCOUNT_PRIVATE_KEY` | `private_key` from the JSON key, **including** the `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` lines and their newlines |
+
+   A private key pasted with literal `\n` escapes fails with `DECODER routines::unsupported`; paste
+   it multiline instead.
+5. **Create the environment.** Settings → Environments → **New environment** →
+   `chrome-web-store`. Add yourself as a required reviewer if you want a manual gate before each
+   store upload (recommended for the first few releases).
+
+### Cutting a release
+
+```bash
+npm version patch          # or minor / major — bumps package.json and creates the v<version> tag
+git push --follow-tags
+```
+
+The tag must match `package.json`; the workflow refuses to publish otherwise. Chrome also refuses a
+version lower than the published one, so never reuse or rewind a version.
+
+Watch the run under **Actions → Release**. On success you get:
+
+- the zip uploaded to the Chrome Web Store and submitted for review,
+- a GitHub release for the tag with the zip attached and generated notes.
+
+### Manual runs
+
+**Actions → Release → Run workflow** lets you:
+
+- **dry_run** — authenticate with the store API and validate the package without uploading.
+- **submit_for_review** — uncheck it to upload the package but leave it in the dashboard as a draft.
+
+### Manual fallback (no CI)
+
+1. Bump `version` in `package.json` only.
 2. `npm run build && npm run zip`.
 3. Dashboard → your item → **Package** → upload the new zip.
 4. Add release notes, submit.
@@ -205,12 +262,12 @@ Keep the version monotonic: Chrome refuses a lower version than the published on
 ## 10. Checklist
 
 - [ ] `npm run test:all` green
-- [ ] Version bumped in both files
-- [ ] Zip built from a clean `npm run build`
+- [ ] `version` bumped in `package.json` (nowhere else)
+- [ ] Working tree clean, tag pushed
 - [ ] Screenshots and promo tile uploaded
 - [ ] Listing copy pasted
 - [ ] Permission justifications pasted
 - [ ] Privacy policy URL live
 - [ ] Privacy questionnaire completed
 - [ ] Visibility and regions set
-- [ ] Submitted
+- [ ] Release run green

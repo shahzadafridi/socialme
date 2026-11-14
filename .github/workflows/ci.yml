@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Types, logic and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run compile
+
+      - name: Logic and provider contract tests
+        run: npm run test:logic
+
+      - name: Build and zip the store package
+        run: npm run zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chrome-zip
+          path: dist/*-chrome.zip
+          if-no-files-found: error
+
+  e2e:
+    name: Extension e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # 137 removed --load-extension, and scripts/e2e.mjs needs it to load the built extension.
+      # Pin the last Chrome-for-Testing line that still honours the switch; move with 137+ only
+      # once the harness can install the extension another way (--load-and-inspect or a policy).
+      - name: Install Chrome for Testing (136, last build honouring --load-extension)
+        run: npx -y @puppeteer/browsers install chrome@136.0.7103.113 --path "$RUNNER_TEMP/cft"
+
+      - name: Resolve the browser path
+        run: |
+          CHROME_PATH="$(find "$RUNNER_TEMP/cft" -type f -name chrome -perm -u+x | head -n 1)"
+          test -n "$CHROME_PATH" || { echo "no chrome binary under $RUNNER_TEMP/cft" >&2; exit 1; }
+          test -x "$CHROME_PATH"
+          echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+          "$CHROME_PATH" --version
+
+      - name: Extension e2e
+        run: npm run test:e2e

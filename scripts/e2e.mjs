@@ -78,6 +78,9 @@ const check = (name, ok, detail) => {
 
 const chrome = spawn(CHROME, [
   '--headless=new',
+  // GitHub's Ubuntu runners block unprivileged user namespaces, so Chrome's sandbox cannot
+  // start there ("No usable sandbox!"). CI only loads this extension into a throwaway profile.
+  ...(process.env.CI ? ['--no-sandbox'] : []),
   `--remote-debugging-port=${PORT}`,
   `--user-data-dir=${profile}`,
   `--disable-extensions-except=${EXT}`,

@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Validate the Chrome Web Store credentials without uploading
+        type: boolean
+        default: false
+      submit_for_review:
+        description: Submit the uploaded package for review and publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish to Chrome Web Store
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: chrome-web-store
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $VERSION" >&2
+            echo "Run 'npm version <patch|minor|major>' and push the tag it creates." >&2
+            exit 1
+          fi
+
+      - name: Build the store package
+        run: npm run zip
+
+      - name: Resolve the package path
+        id: package
+        run: |
+          ZIP="dist/socialme-$(node -p "require('./package.json').version")-chrome.zip"
+          test -f "$ZIP"
+          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-zip
+          path: ${{ steps.package.outputs.path }}
+          if-no-files-found: error
+
+      - name: Publish
+        env:
+          CHROME_API_VERSION: v2
+          CHROME_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CWS_SERVICE_ACCOUNT_CLIENT_EMAIL }}
+          CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_PRIVATE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
+        run: |
+          ARGS=(--chrome-zip "${{ steps.package.outputs.path }}")
+
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+
+          # Tag releases have no dispatch inputs, so only an explicit false opts out.
+          if [ "$SUBMIT_FOR_REVIEW" = "false" ]; then
+            export CHROME_SKIP_SUBMIT_REVIEW=true
+          fi
+
+          npx wxt submit "${ARGS[@]}"
+
+      - name: Create the GitHub release
+        if: startsWith(github.ref, 'refs/tags/') && inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.path }}" \
+            --title "SocialMe $GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes

@@ -77,7 +77,9 @@ jobs:
           CHROME_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CWS_SERVICE_ACCOUNT_CLIENT_EMAIL }}
           CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_PRIVATE_KEY }}
-          DRY_RUN: ${{ inputs.dry_run }}
+          # The publisher library reads DRY_RUN itself, so it must never be empty
+          # (tag pushes have no dispatch inputs). "false" keeps a tag release publishing.
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
           SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
         run: |
           ARGS=(--chrome-zip "${{ steps.package.outputs.path }}")

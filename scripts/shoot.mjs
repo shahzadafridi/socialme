@@ -80,6 +80,11 @@ try {
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
   await send('Page.enable', {}, sessionId);
   await send('Runtime.enable', {}, sessionId);
+  await send(
+    'Emulation.setDeviceMetricsOverride',
+    { width: Number(width), height: Number(height), deviceScaleFactor: 1, mobile: false },
+    sessionId,
+  );
 
   const evaluate = async (expression, awaitPromise = false) => {
     const result = await send(

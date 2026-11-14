@@ -85,12 +85,28 @@ function ComposerDemo() {
       postForEditor: () => document.body,
     } as PlatformAdapter;
     const cleanup = installComposerButtons(adapter, () => true);
+    const autoMenu = new URLSearchParams(location.search).get('menu');
+    if (autoMenu) {
+      window.setTimeout(() => {
+        document.querySelector<HTMLButtonElement>('.socialme-quick')?.click();
+      }, 900);
+    }
     return () => cleanup();
   }, []);
 
+  const params = new URLSearchParams(location.search);
+  const caption = params.get('caption');
+  const sub = params.get('sub');
+
   return (
     <div className="demo-post">
-      <div className="fake-post" style={{ maxWidth: 620 }}>
+      {caption ? (
+        <div className="demo-caption">
+          <h1>{caption}</h1>
+          {sub ? <p>{sub}</p> : null}
+        </div>
+      ) : null}
+      <div className="fake-post" style={{ maxWidth: 720 }}>
         <div className="fake-avatar" />
         <div style={{ flex: 1 }}>
           <div className="fake-name">Maya Chen</div>

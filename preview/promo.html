@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SocialMe — promo tile</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 440px; height: 280px; overflow: hidden; }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+        background:
+          radial-gradient(120% 90% at 100% 0%, rgba(34, 211, 238, 0.35) 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 100%, rgba(124, 108, 255, 0.45) 0%, transparent 55%),
+          #0e1014;
+        color: #e9ecf3;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 14px;
+        padding: 34px 32px;
+        position: relative;
+      }
+
+      .glow {
+        position: absolute;
+        inset: -40% -10% auto auto;
+        width: 260px;
+        height: 260px;
+        background: radial-gradient(circle, rgba(124, 108, 255, 0.55), transparent 65%);
+        filter: blur(6px);
+      }
+
+      .row { display: flex; align-items: center; gap: 12px; position: relative; }
+
+      .mark {
+        width: 46px;
+        height: 46px;
+        border-radius: 13px;
+        background: linear-gradient(135deg, #7c6cff, #22d3ee);
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        color: #fff;
+        box-shadow: 0 10px 30px rgba(60, 40, 180, 0.5);
+      }
+
+      h1 { font-size: 27px; letter-spacing: -0.02em; }
+      .tag { font-size: 14.5px; color: #aab1c2; line-height: 1.45; max-width: 330px; position: relative; }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        align-self: flex-start;
+        padding: 5px 11px;
+        border-radius: 999px;
+        border: 1px solid rgba(124, 108, 255, 0.5);
+        background: rgba(124, 108, 255, 0.14);
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #cfd5e6;
+        position: relative;
+      }
+
+      .networks { font-size: 11.5px; color: #6f7889; letter-spacing: 0.04em; position: relative; }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+    <div class="row">
+      <div class="mark">✦</div>
+      <h1>SocialMe</h1>
+    </div>
+    <p class="tag">Sharp, on-brand replies on LinkedIn, X and Facebook — written in your voice.</p>
+    <div class="pill">✦ one click · human-paced · account-safe</div>
+    <div class="networks">LINKEDIN · X · FACEBOOK</div>
+  </body>
+</html>

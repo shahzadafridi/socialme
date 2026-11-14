@@ -86,7 +86,7 @@ body {
 }
 
 .demo-post {
-  padding: 40px;
+  padding: 56px 40px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -132,6 +132,30 @@ body {
   background: #0a66c2;
   border-radius: 999px;
   padding: 5px 14px;
+}
+
+.demo-caption {
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 6px;
+}
+
+.demo-caption h1 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  color: #14161b;
+  margin: 0 0 6px;
+}
+
+.demo-caption p {
+  margin: 0;
+  font-size: 14px;
+  color: #5c6475;
+}
+
+@media (prefers-color-scheme: dark) {
+  .demo-caption h1 { color: #e9ecf3; }
+  .demo-caption p { color: #98a0b3; }
 }
 
 .demo-hint {

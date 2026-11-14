@@ -48,22 +48,13 @@ export function DefaultsTab({
           </Field>
         </div>
 
-        <div className="grid-2">
-          <Field label="Reply length">
-            <Segmented
-              value={defaults.replyLength}
-              onChange={(value) => onChange({ defaults: { ...defaults, replyLength: value } })}
-              options={LENGTHS.map((length) => ({ value: length.id, label: length.label }))}
-            />
-          </Field>
-          <Field label="Post length">
-            <Segmented
-              value={defaults.postLength}
-              onChange={(value) => onChange({ defaults: { ...defaults, postLength: value } })}
-              options={LENGTHS.map((length) => ({ value: length.id, label: length.label }))}
-            />
-          </Field>
-        </div>
+        <Field label="Reply length">
+          <Segmented
+            value={defaults.replyLength}
+            onChange={(value) => onChange({ defaults: { ...defaults, replyLength: value } })}
+            options={LENGTHS.map((length) => ({ value: length.id, label: length.label }))}
+          />
+        </Field>
 
         <Field
           label="Standing instruction"

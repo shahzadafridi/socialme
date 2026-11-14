@@ -219,7 +219,7 @@ export function PersonasTab({
               />
             </Field>
             <Field
-              label="Sample posts"
+              label="Writing samples"
               hint="Paste 2-3 things you actually wrote. The model matches rhythm and vocabulary, not content."
             >
               <TextArea
@@ -276,23 +276,6 @@ export function PersonasTab({
                   onChange={(value) =>
                     updatePersona({
                       replyMaxChars: value === 's' ? 300 : value === 'm' ? 700 : 1100,
-                    })
-                  }
-                  options={[
-                    { value: 's', label: 'Short' },
-                    { value: 'm', label: 'Medium' },
-                    { value: 'l', label: 'Long' },
-                  ]}
-                />
-              </Field>
-              <Field label="Max post length" hint={`${persona.postMaxChars} characters`}>
-                <Segmented
-                  value={
-                    persona.postMaxChars <= 700 ? 's' : persona.postMaxChars <= 1800 ? 'm' : 'l'
-                  }
-                  onChange={(value) =>
-                    updatePersona({
-                      postMaxChars: value === 's' ? 600 : value === 'm' ? 1800 : 2600,
                     })
                   }
                   options={[

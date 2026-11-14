@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getPublicSettings, watchSettings } from '@/lib/data/storage';
 import type { PlatformAdapter } from '@/lib/integrations/adapter';
-import type { PlatformId, PostContext, PublicSettings, TaskKind } from '@/lib/core/types';
+import type { PlatformId, PostContext, PublicSettings } from '@/lib/core/types';
 import { OPEN_EVENT, TOGGLE_EVENT, type OpenPayload } from '@/lib/ui/bus';
 import { Panel } from '@/lib/ui/Panel';
 import { Icon } from '@/lib/ui/icons';
@@ -14,7 +14,7 @@ interface AppProps {
 function findPostAncestor(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof Element)) return null;
   const candidate = target.closest<HTMLElement>(
-    'article, div[role="article"], div.feed-shared-update-v2, div[data-urn]',
+    'article, div[role="article"], [role="listitem"], div.feed-shared-update-v2, div[data-urn]',
   );
   return candidate ?? null;
 }
@@ -22,7 +22,6 @@ function findPostAncestor(target: EventTarget | null): HTMLElement | null {
 export function App({ adapter, platform }: AppProps) {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [open, setOpen] = useState(false);
-  const [task, setTask] = useState<TaskKind>('reply');
   const [post, setPost] = useState<PostContext | null>(null);
   const [postEl, setPostEl] = useState<HTMLElement | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -69,17 +68,15 @@ export function App({ adapter, platform }: AppProps) {
   }, [settings?.theme, applyTheme]);
 
   const openPanel = useCallback(
-    (el: HTMLElement | null, nextTask?: TaskKind) => {
+    (el: HTMLElement | null) => {
       const target = el ?? lastHovered.current;
       if (target && target.isConnected) {
         const context = adapter.readPost(target);
         setPost(context);
-        setPostEl(target);
-        setTask(nextTask ?? (context ? 'reply' : 'post'));
+        setPostEl(context ? target : null);
       } else {
         setPost(null);
         setPostEl(null);
-        setTask(nextTask ?? 'post');
       }
       setOpen(true);
     },
@@ -89,7 +86,7 @@ export function App({ adapter, platform }: AppProps) {
   useEffect(() => {
     const onOpen = (event: Event) => {
       const detail = (event as CustomEvent<OpenPayload>).detail;
-      openPanel(detail?.el ?? null, detail?.task);
+      openPanel(detail?.el ?? null);
     };
     const onToggle = () => setOpen((value) => !value);
     document.addEventListener(OPEN_EVENT, onOpen);
@@ -132,20 +129,6 @@ export function App({ adapter, platform }: AppProps) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open]);
 
-  const onTask = useCallback(
-    (next: TaskKind) => {
-      setTask(next);
-      if (next !== 'post' && !post && lastHovered.current) {
-        const context = adapter.readPost(lastHovered.current);
-        if (context) {
-          setPost(context);
-          setPostEl(lastHovered.current);
-        }
-      }
-    },
-    [adapter, post],
-  );
-
   if (!settings) return null;
 
   return (
@@ -157,8 +140,6 @@ export function App({ adapter, platform }: AppProps) {
           platform={platform}
           post={post}
           postEl={postEl}
-          task={task}
-          onTask={onTask}
           onClose={() => setOpen(false)}
           onToast={showToast}
         />

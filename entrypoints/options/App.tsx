@@ -148,9 +148,9 @@ export function OptionsApp({ initialTab }: { initialTab?: TabId } = {}) {
                 <div>
                   <h2 className="card__title">Welcome to SocialMe</h2>
                   <p className="card__desc">
-                    Three steps: pick a provider and paste a key, tune one persona, then open any
-                    post and hit <b>✦ SocialMe</b>. Drafts stream in your voice and you decide what
-                    gets published.
+                    Three steps: pick a provider and paste a key, tune one persona, then start a
+                    comment or a message and hit <b>✦</b>. Drafts stream in your voice and you
+                    decide what gets sent.
                   </p>
                 </div>
                 <button

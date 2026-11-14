@@ -35,13 +35,13 @@ const persona = {
   hashtagLevel: 'light',
   cta: '',
   replyMaxChars: 700,
-  postMaxChars: 1800,
   signOff: '',
   language: 'auto',
 };
 
 const post = {
   author: 'Maya Chen',
+  authorHeadline: 'VP Product at Northwind · ex-Stripe',
   text: 'We stopped doing quarterly roadmaps last year. Cycle time dropped 34%.',
   meta: '1,284 reactions',
 };
@@ -49,7 +49,7 @@ const post = {
 /* ------------------------------ replies ------------------------------ */
 
 const reply = buildPrompt({
-  request: { task: 'reply', platform: 'linkedin', post, angle: 'insight', length: 'medium' },
+  request: { channel: 'comment', platform: 'linkedin', post, angle: 'insight', length: 'medium' },
   persona,
   platform: 'linkedin',
 });
@@ -63,6 +63,7 @@ ok(
 ok('reply: does not leak the post guide', !reply.system.includes('Hook in the first line'));
 ok('reply: includes the source post', reply.user.includes('We stopped doing quarterly roadmaps'));
 ok('reply: includes the author', reply.user.includes('Maya Chen'));
+ok('reply: includes the author headline', reply.user.includes('VP Product at Northwind'));
 ok('reply: includes the hard character limit', reply.user.includes('Hard max 700 characters'));
 ok('reply: no hashtags rule for comments', reply.system.includes('No hashtags in comments'));
 ok('reply: angle instruction present', reply.user.includes('Add one specific thing the author did not say'));
@@ -74,38 +75,64 @@ ok('reply: temperature high enough to avoid boilerplate', reply.temperature >= 0
 ok('reply: token budget is bounded', reply.maxTokens > 100 && reply.maxTokens <= 1600);
 
 const replyX = buildPrompt({
-  request: { task: 'reply', platform: 'x', post, angle: 'punchy', length: 'short' },
+  request: { channel: 'comment', platform: 'x', post, angle: 'punchy', length: 'short' },
   persona,
   platform: 'x',
 });
 ok('x reply: shorter target than linkedin', replyX.user.includes('60-120 characters'));
 ok('x reply: mentions X reply etiquette', replyX.system.includes('Replies on X'));
 
-/* ------------------------------- posts ------------------------------- */
+/* --------------------------- nested replies --------------------------- */
 
-const postPrompt = buildPrompt({
-  request: { task: 'post', platform: 'linkedin', angle: 'story', length: 'long' },
+const nested = buildPrompt({
+  request: {
+    channel: 'comment',
+    platform: 'linkedin',
+    post,
+    replyingTo: {
+      author: 'Sam Okafor',
+      text: 'The 34% is doing a lot of work there — was that cycle time or review time?',
+    },
+    angle: 'insight',
+    length: 'short',
+  },
   persona,
   platform: 'linkedin',
 });
-ok('post: uses the post guide', postPrompt.system.includes('Hook in the first line'));
-ok('post: does not use the comment guide', !postPrompt.system.includes('Replies on LinkedIn'));
-ok('post: long length target', postPrompt.user.includes('1200-2000 characters'));
-ok('post: no source post block', !postPrompt.user.includes('SOURCE POST'));
 
-const repurpose = buildPrompt({
-  request: { task: 'repurpose', platform: 'facebook', post, angle: 'insight', length: 'medium' },
+ok('nested: names the commenter in the task', nested.user.includes('I am answering Sam Okafor'));
+ok('nested: carries the comment text', nested.user.includes('was that cycle time or review time'));
+ok('nested: labels the comment block', nested.user.includes('THE COMMENT I AM ANSWERING'));
+ok('nested: tells the model not to restate the post', /not to the post/i.test(nested.user));
+ok('nested: keeps the post as background', nested.user.includes('SOURCE POST'));
+
+/* -------------------------- connection notes -------------------------- */
+
+const note = buildPrompt({
+  request: {
+    channel: 'note',
+    platform: 'linkedin',
+    recipient: { name: 'Maya Chen', headline: 'VP Product at Northwind · ex-Stripe' },
+    extra: 'We met at the Berlin product meetup.',
+  },
   persona,
-  platform: 'facebook',
+  platform: 'linkedin',
 });
-ok('repurpose: instructs a rewrite', repurpose.user.includes('Rewrite the source post as MY OWN'));
-ok('repurpose: forbids copying sentences', repurpose.user.includes('Do not copy any sentence'));
+
+ok('note: uses the connection-note guide', note.system.includes('CONNECTION-REQUEST NOTES'));
+ok('note: no comment guide', !note.system.includes('Replies on LinkedIn'));
+ok('note: names the recipient', note.user.includes('Maya Chen') && note.user.includes('Northwind'));
+ok('note: hard 300 character cap', note.user.includes('Hard max 300 characters'));
+ok('note: forbids links and pitches', /No pitch, no price, no links/i.test(note.system));
+ok('note: carries the instruction', note.user.includes('Berlin product meetup'));
+ok('note: bounded token budget', note.maxTokens > 100 && note.maxTokens <= 500);
+ok('note: never invents a name', note.user.includes('do not invent one'));
 
 /* --------------------------- avoid / extra --------------------------- */
 
 const regenerated = buildPrompt({
   request: {
-    task: 'reply',
+    channel: 'comment',
     platform: 'linkedin',
     post,
     avoid: ['Great post! This is so true.', 'Another rejected draft.'],
@@ -133,7 +160,7 @@ const brand = {
 };
 
 const branded = buildPrompt({
-  request: { task: 'reply', platform: 'linkedin', post, angle: 'insight', length: 'medium' },
+  request: { channel: 'comment', platform: 'linkedin', post, angle: 'insight', length: 'medium' },
   persona,
   platform: 'linkedin',
   brand,
@@ -144,11 +171,11 @@ ok('brand: positioning present', branded.system.includes('fixing delivery'));
 ok('brand: pillars present', branded.system.includes('Shipping software without a big team'));
 ok('brand: proof present', branded.system.includes('3 weeks to 4 days'));
 ok('brand: forbidden claims present', branded.system.includes('Never name clients'));
-ok('brand: objective is profile clicks', branded.system.includes('click my profile'));
+ok('brand: objective is a real conversation', branded.system.includes('start a real conversation'));
 ok('brand: omitted when empty', !reply.system.includes('WHAT I AM BUILDING'));
 
 const emptyBrand = buildPrompt({
-  request: { task: 'reply', platform: 'linkedin', post },
+  request: { channel: 'comment', platform: 'linkedin', post },
   persona,
   platform: 'linkedin',
   brand: { name: '', positioning: '', pillars: '', pov: '', proof: '', stories: '', offer: '', goals: '', forbidden: '' },
@@ -194,7 +221,6 @@ ok('transcript: handles a single message', single === 'them: Ping');
 
 const dm = buildPrompt({
   request: {
-    task: 'reply',
     platform: 'linkedin',
     channel: 'dm',
     post: { author: 'Mohammad', text: 'them: We are hiring for a fintech payments team in Dubai.\nthem: Are you open to hearing about it?' },

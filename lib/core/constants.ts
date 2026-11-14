@@ -1,22 +1,18 @@
-import type {
-  Angle,
-  Length,
-  PlatformId,
-  ProviderId,
-  ProviderPreset,
-  TaskKind,
-} from '@/lib/core/types';
+import type { Angle, Length, PlatformId, ProviderId, ProviderPreset } from '@/lib/core/types';
 
 export const APP_NAME = 'SocialMe';
 
 export const PLATFORMS: Record<
   PlatformId,
-  { id: PlatformId; label: string; color: string; glyph: string; postLimit: number }
+  { id: PlatformId; label: string; color: string; glyph: string; commentLimit: number }
 > = {
-  linkedin: { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2', glyph: 'in', postLimit: 3000 },
-  x: { id: 'x', label: 'X', color: '#e7e9ea', glyph: '𝕏', postLimit: 280 },
-  facebook: { id: 'facebook', label: 'Facebook', color: '#1877F2', glyph: 'f', postLimit: 63206 },
+  linkedin: { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2', glyph: 'in', commentLimit: 1250 },
+  x: { id: 'x', label: 'X', color: '#e7e9ea', glyph: '𝕏', commentLimit: 280 },
+  facebook: { id: 'facebook', label: 'Facebook', color: '#1877F2', glyph: 'f', commentLimit: 8000 },
 };
+
+/** LinkedIn rejects a connection note longer than this. */
+export const NOTE_LIMIT = 300;
 
 export const PROVIDER_PRESETS: Record<ProviderId, ProviderPreset> = {
   openai: {
@@ -121,12 +117,6 @@ export const TONES = [
   'Story-driven',
   'No-nonsense technical',
 ];
-
-export const TASKS: Record<TaskKind, { label: string; verb: string }> = {
-  reply: { label: 'Reply', verb: 'Write a comment' },
-  post: { label: 'New post', verb: 'Write a post' },
-  repurpose: { label: 'Repurpose', verb: 'Rewrite as my post' },
-};
 
 /** Openers that kill engagement because every bot uses them. */
 export const BANNED_OPENERS = [

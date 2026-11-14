@@ -1,5 +1,14 @@
-import { BANNED_OPENERS, CLICHE_WORDS } from '@/lib/core/constants';
-import type { Angle, Brand, GenerateRequest, Length, Persona, PlatformId, TaskKind } from '@/lib/core/types';
+import { BANNED_OPENERS, CLICHE_WORDS, NOTE_LIMIT, PLATFORMS } from '@/lib/core/constants';
+import type {
+  Angle,
+  Brand,
+  Channel,
+  GenerateRequest,
+  Length,
+  Persona,
+  PlatformId,
+  ReplyTarget,
+} from '@/lib/core/types';
 
 export interface BuiltPrompt {
   system: string;
@@ -15,50 +24,32 @@ export interface BuildContext {
   brand?: Brand;
 }
 
-const PLATFORM_GUIDE: Record<
-  PlatformId,
-  { name: string; reply: string; post: string }
-> = {
+const PLATFORM_GUIDE: Record<PlatformId, { name: string; comment: string }> = {
   linkedin: {
     name: 'LinkedIn',
-    reply: `Replies on LinkedIn are comments under someone else's post.
+    comment: `Replies on LinkedIn are comments under someone else's post.
 - 1-2 short paragraphs. No greeting, no sign-off, no "Great post".
 - Comments between 200 and 600 characters get the most reach. Never exceed the hard limit.
 - No hashtags in comments. No links unless the persona explicitly asks.
-- Professional does not mean stiff: write like a senior person talking to a peer.`,
-    post: `Original LinkedIn posts.
-- Hook in the first line (it is the only line shown before "see more"). It must work standalone.
-- Short lines. White space between ideas. No emoji bullets unless the persona allows them.
-- No more than 3 hashtags, at the end, lowercase, only if the persona uses hashtags.`,
+- Professional does not mean stiff: write like a senior person talking to a peer.
+- End with something the other person can answer, but never "what do you think?".`,
   },
   x: {
     name: 'X (Twitter)',
-    reply: `Replies on X.
+    comment: `Replies on X.
 - One or two sentences. 60-240 characters is the sweet spot.
 - No hashtags. No "thread 🧵". No engagement bait ("follow for more").
 - Be specific and slightly surprising. A reply that adds a fact or a sharper framing wins.
 - Lowercase is acceptable if the persona is casual.`,
-    post: post_guide_x(),
   },
   facebook: {
     name: 'Facebook',
-    reply: `Facebook comments.
+    comment: `Facebook comments.
 - Conversational, 1-2 sentences, 80-350 characters.
 - Warm but not gushing. No hashtags in comments.
 - Emoji: at most one, only if the persona uses emoji.`,
-    post: `Facebook posts.
-- First sentence must earn the "see more" tap.
-- Conversational. Short paragraphs. No hashtags unless the persona uses them.
-- Ask nothing at the end unless the persona wants engagement bait.`,
   },
 };
-
-function post_guide_x() {
-  return `Original posts on X.
-- A single post must be under 260 characters including spaces.
-- The hook is the whole post: first 6-8 words decide everything.
-- No hashtags. No "a thread 🧵". No emoji unless the persona uses them.`;
-}
 
 const ANGLE_GUIDE: Record<Angle, string> = {
   insight:
@@ -79,21 +70,21 @@ const ANGLE_GUIDE: Record<Angle, string> = {
     'One or two sentences. Maximum signal per word. No hedging, no qualifiers, no extra context.',
 };
 
-const LENGTH_TARGET: Record<TaskKind, Record<PlatformId, Record<Length, string>>> = {
-  reply: {
+const LENGTH_TARGET: Record<Channel, Record<PlatformId, Record<Length, string>>> = {
+  comment: {
     linkedin: { short: '120-260 characters', medium: '260-520 characters', long: '520-850 characters' },
     x: { short: '60-120 characters', medium: '120-230 characters', long: '230-400 characters' },
     facebook: { short: '80-160 characters', medium: '160-350 characters', long: '350-600 characters' },
   },
-  post: {
-    linkedin: { short: '300-600 characters', medium: '600-1200 characters', long: '1200-2000 characters' },
-    x: { short: '80-140 characters', medium: '140-250 characters', long: '250-270 characters' },
-    facebook: { short: '150-350 characters', medium: '350-750 characters', long: '750-1300 characters' },
+  dm: {
+    linkedin: { short: '1 sentence', medium: '2-3 sentences', long: '3-4 sentences' },
+    x: { short: '1 sentence', medium: '2 sentences', long: '3 sentences' },
+    facebook: { short: '1 sentence', medium: '2-3 sentences', long: '3-4 sentences' },
   },
-  repurpose: {
-    linkedin: { short: '400-700 characters', medium: '700-1300 characters', long: '1300-2200 characters' },
-    x: { short: '90-150 characters', medium: '150-250 characters', long: '250-270 characters' },
-    facebook: { short: '200-400 characters', medium: '400-800 characters', long: '800-1400 characters' },
+  note: {
+    linkedin: { short: '120-190 characters', medium: '190-250 characters', long: '250-295 characters' },
+    x: { short: '1 sentence', medium: '2 sentences', long: '3 sentences' },
+    facebook: { short: '1 sentence', medium: '2-3 sentences', long: '3-4 sentences' },
   },
 };
 
@@ -114,13 +105,6 @@ function languageOf(persona: Persona, request: GenerateRequest): string {
   const requested = request.language?.trim();
   if (requested && requested !== 'auto') return requested;
   return persona.language && persona.language !== 'auto' ? persona.language : 'auto';
-}
-
-function hashtagRule(persona: Persona, task: TaskKind): string {
-  if (persona.hashtagLevel === 'none') return 'No hashtags at all.';
-  if (task === 'reply') return 'No hashtags in comments.';
-  if (persona.hashtagLevel === 'light') return 'At most 2 hashtags, at the end, lowercase.';
-  return 'Up to 5 hashtags at the end.';
 }
 
 function emojiRule(persona: Persona): string {
@@ -153,7 +137,7 @@ const HARD_RULES = `NON-NEGOTIABLE RULES
 - Avoid em dashes. Avoid the "It's not X, it's Y" construction. Avoid three-item lists that exist only to sound complete.
 - Vary sentence length. One idea per sentence. Concrete nouns beat abstractions.
 - Sound like a specific human writing quickly on their phone, not like marketing copy.
-- The job is to make the right stranger click my profile. Earn that with one useful idea or one sharp observation — never with a pitch, a call to action, or follow-bait.
+- The job is to start a real conversation with the person in front of me — never to pitch, collect a follow, or flatter.
 - It must read as recognisably mine: pick one of my pillars and make the connection felt, not announced.`;
 
 const DM_GUIDE = `DIRECT MESSAGES
@@ -165,46 +149,63 @@ const DM_GUIDE = `DIRECT MESSAGES
 - Never pitch, never upsell, never quote a price unless they asked about it.
 - Match their register: if they wrote two lines, do not write a page.`;
 
-function taskBlock(task: TaskKind, platform: PlatformId, persona: Persona): string {
+const NOTE_GUIDE = `CONNECTION-REQUEST NOTES
+- This is the short note attached to a LinkedIn invitation to connect. Write only the note.
+- Hard limit: ${NOTE_LIMIT} characters. Aim for 200-280 so nothing gets cut off.
+- One real reason to connect, grounded in their headline, their post or what I am working on.
+- Optional opener: "Hi {first name}," then the reason. No other greeting and no sign-off.
+- No pitch, no price, no links, no hashtags, no emoji, no attaching a resume.
+- Never say "I'd love to pick your brain", "I am reaching out because", or "I came across your profile".
+- Do not invent anything about them. If there is little context, keep it about why their work is relevant to mine.`;
+
+function taskBlock(channel: Channel, platform: PlatformId, replyTo?: ReplyTarget): string {
   const guide = PLATFORM_GUIDE[platform];
-  if (task === 'reply') {
+  if (channel === 'note') {
     return `TASK
-Write ONE comment replying to the source post on ${guide.name}.
+Write the note that goes with my LinkedIn connection request.
 
-${guide.reply}`;
+${NOTE_GUIDE}`;
   }
-  if (task === 'post') {
+  if (channel === 'dm') {
     return `TASK
-Write ONE original post for ${guide.name}.
+Write ONE reply to the last message in this conversation.`;
+  }
+  if (replyTo) {
+    return `TASK
+Write ONE reply to a comment in the thread on ${guide.name}.
+- I am answering ${replyTo.author ? replyTo.author : 'the commenter'}, not the post author and not the whole audience.
+- Respond to the specific thing they said; the post is background, not the subject.
 
-${guide.post}`;
+${guide.comment}`;
   }
   return `TASK
-Rewrite the source post as MY OWN original post for ${guide.name}.
-- Keep the core insight.
-- Change the framing, the opening and the structure.
-- Add my own angle or example. Do not copy any sentence, phrase or list from the source.
-- Do not credit the author unless my notes tell me to.
+Write ONE comment replying to the source post on ${guide.name}.
 
-${guide.post}`;
+${guide.comment}`;
 }
 
 export function buildPrompt(ctx: BuildContext): BuiltPrompt {
   const { request, persona, platform, brand } = ctx;
-  const task = request.task;
+  const channel = request.channel;
   const angle: Angle = request.angle ?? 'insight';
-  const length: Length = request.length ?? (task === 'reply' ? 'medium' : 'medium');
+  const length: Length = request.length ?? 'medium';
   const tone = request.tone?.trim() || persona.tone;
   const language = languageOf(persona, request);
-  const panel = PLATFORM_GUIDE[platform];
-  const limit = task === 'reply' ? persona.replyMaxChars : persona.postMaxChars;
+  const guide = PLATFORM_GUIDE[platform];
+  const platformCap =
+    channel === 'note' ? NOTE_LIMIT : channel === 'dm' ? 1200 : PLATFORMS[platform].commentLimit;
+  const limit = Math.min(persona.replyMaxChars, platformCap);
   const brandLines = brand ? brandBlock(brand) : '';
+  const replyTo = request.replyingTo;
 
-  const isDm = request.channel === 'dm';
+  const audience =
+    channel === 'dm'
+      ? 'direct messages'
+      : channel === 'note'
+        ? 'connection-request notes'
+        : 'social media comments';
 
-  const system = `You are the ghostwriter for one specific person. You write ${
-    isDm ? 'direct messages' : task === 'reply' ? 'social media comments' : 'social media posts'
-  } in their voice. You are not an assistant and you never talk about yourself.
+  const system = `You are the ghostwriter for one specific person. You write ${audience} in their voice. You are not an assistant and you never talk about yourself.
 
 WHO I AM
 ${voiceBlock({ ...persona, tone }) || '- A thoughtful practitioner in my field.'}
@@ -213,13 +214,13 @@ ${
     ? `\nWHAT I AM BUILDING (this is why every word exists)\n${brandLines}\n`
     : ''
 }
-${isDm ? DM_GUIDE : task === 'reply' ? panel.reply : panel.post}
+${channel === 'dm' ? DM_GUIDE : channel === 'note' ? NOTE_GUIDE : guide.comment}
 
 ${HARD_RULES}
 - ${emojiRule(persona)}
-- ${hashtagRule(persona, task)}
+- ${channel === 'comment' ? 'No hashtags in comments.' : channel === 'note' ? 'No hashtags in a connection note.' : 'No hashtags.'}
 - Length must not exceed ${limit} characters. This is a hard limit.
-- Language: ${language === 'auto' ? 'match the language of the source post' : language}.
+- Language: ${language === 'auto' ? 'match the language of the source' : language}.
 - Specificity beats cleverness. A reader should learn one thing or feel one thing.`;
 
   const avoid =
@@ -230,25 +231,40 @@ ${HARD_RULES}
       : '';
 
   const samples = persona.samplePosts?.trim()
-    ? `\n\nPOSTS I ACTUALLY WROTE (match the rhythm and vocabulary, never copy content):\n"""\n${persona.samplePosts.trim().slice(0, 2500)}\n"""`
+    ? `\n\nWRITING I ACTUALLY PUBLISHED (match the rhythm and vocabulary, never copy content):\n"""\n${persona.samplePosts.trim().slice(0, 2500)}\n"""`
     : '';
 
   const source = request.post
     ? `\n\nSOURCE POST${request.post.author ? ` by ${request.post.author}` : ''}${
-        request.post.meta ? ` (${request.post.meta})` : ''
-      }:\n"""\n${request.post.text.trim().slice(0, 6000)}\n"""`
+        request.post.authorHeadline ? ` (${request.post.authorHeadline})` : ''
+      }${request.post.meta ? ` (${request.post.meta})` : ''}:\n"""\n${request.post.text.trim().slice(0, 6000)}\n"""`
     : '';
+
+  const replyToBlock = replyTo
+    ? `\n\nTHE COMMENT I AM ANSWERING${replyTo.author ? ` (${replyTo.author})` : ''}:\n"""\n${replyTo.text.trim().slice(0, 2000)}\n"""\n- Reply to this comment, not to the post. Use one concrete detail from it.\n- Never restate the post or repeat their sentence back to them.`
+    : '';
+
+  const recipient = request.recipient;
+  const recipientBlock =
+    channel === 'note'
+      ? `\n\nWHO I AM INVITING${
+          recipient?.name ? `\n- Name: ${recipient.name}` : ''
+        }${recipient?.headline ? `\n- Their headline: ${recipient.headline}` : ''}${
+          recipient?.meta ? `\n- What I can see: ${recipient.meta}` : ''
+        }\n- If the name is missing, do not invent one; write without an opener.`
+      : '';
 
   const extra = request.extra?.trim()
     ? `\n\nMY INSTRUCTION FOR THIS ONE (follow it, it overrides style defaults): ${request.extra.trim()}`
     : '';
 
-  if (isDm) {
+  if (channel === 'dm') {
     const transcript = (request.post?.text ?? '').trim().slice(0, 3000);
     const cap = Math.min(persona.replyMaxChars, 1200);
+    const who = request.post?.author ?? 'them';
     const user = `${DM_GUIDE}
 
-CONVERSATION WITH ${request.post?.author ?? 'them'} (oldest first, "me" is me)
+CONVERSATION WITH ${who} (oldest first, "me" is me)
 """
 ${transcript}
 """
@@ -260,7 +276,7 @@ RULES FOR THIS REPLY
 - Never open with a generic question about their goals.
 
 LENGTH
-1-3 sentences is ideal. Hard max ${cap} characters.${extra}
+${LENGTH_TARGET.dm[platform][length]} is ideal. Hard max ${cap} characters.${extra}
 
 Write the reply to the last message now.`;
 
@@ -272,40 +288,57 @@ Write the reply to the last message now.`;
     };
   }
 
-  const user = `${taskBlock(task, platform, persona)}
+  if (channel === 'note') {
+    const user = `${taskBlock('note', platform)}
+
+LENGTH
+Target ${LENGTH_TARGET.note[platform][length]}. Hard max ${Math.min(limit, NOTE_LIMIT)} characters.
+${recipientBlock}${source}${extra}${avoid}${samples}
+
+QUALITY BAR
+They should be able to tell in one line why I chose them specifically, and the note should not read like a template sent to fifty people.
+No filler. If a word can be deleted, delete it.
+
+Write the final note now.`;
+
+    return {
+      system,
+      user,
+      maxTokens: 320,
+      temperature: 0.8,
+    };
+  }
+
+  const user = `${taskBlock(channel, platform, replyTo)}
 
 ANGLE — ${angle.toUpperCase()}
 ${ANGLE_GUIDE[angle]}
 
 LENGTH
-Target ${LENGTH_TARGET[task][platform][length]}. Hard max ${limit} characters.
+Target ${LENGTH_TARGET.comment[platform][length]}. Hard max ${limit} characters.
 
 QUALITY BAR
-${
-  task === 'reply'
-    ? 'The author should want to reply back to this comment. It must reference one concrete detail from the post without restating it.'
-    : 'The first line must be able to stand alone as the reason someone stops scrolling.'
-}
-No filler. If a sentence could be deleted without losing meaning, delete it.${source}${extra}${avoid}${samples}
+The person I am answering should want to reply back. Reference one concrete detail without restating it.${source}${replyToBlock}${extra}${avoid}${samples}
 
 Write the final text now.`;
 
-  const maxChars = Math.min(limit, task === 'reply' ? 900 : 2400);
-  const maxTokens = Math.min(1600, Math.ceil(maxChars / 2.2) + 160);
+  const maxTokens = Math.min(1600, Math.ceil(Math.min(limit, 900) / 2.2) + 160);
 
   return {
     system,
     user,
     maxTokens,
-    temperature: task === 'reply' ? 0.9 : 0.85,
+    temperature: 0.9,
   };
 }
 
 /** Short human-readable summary used in the panel. */
 export function describeRequest(request: GenerateRequest): string {
-  const bits: string[] = [];
-  bits.push(request.task === 'reply' ? 'Reply' : request.task === 'post' ? 'New post' : 'Repurpose');
-  if (request.angle) bits.push(request.angle);
+  const label =
+    request.channel === 'comment' ? 'Reply' : request.channel === 'dm' ? 'Message' : 'Note';
+  const bits: string[] = [label];
+  if (request.channel === 'comment' && request.replyingTo) bits.push('to a comment');
+  if (request.angle && request.channel === 'comment') bits.push(request.angle);
   if (request.length) bits.push(request.length);
   return bits.join(' · ');
 }

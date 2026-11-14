@@ -189,7 +189,7 @@ export async function addHistory(payload: DraftActionPayload): Promise<void> {
     id: `h_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     ts: Date.now(),
     platform: payload.platform,
-    task: payload.task,
+    channel: payload.channel,
     personaId: payload.personaId,
     angle: payload.angle,
     postExcerpt: payload.postExcerpt.slice(0, 400),
@@ -201,7 +201,15 @@ export async function addHistory(payload: DraftActionPayload): Promise<void> {
 }
 
 export async function getHistory(): Promise<HistoryItem[]> {
-  return (await read<HistoryItem[]>(STORAGE_KEYS.history)) ?? [];
+  const raw =
+    (await read<Array<HistoryItem & { task?: string }>>(STORAGE_KEYS.history)) ?? [];
+  // Drafts stored before 0.6 carry `task`; keep comment replies, drop the removed
+  // post/repurpose drafts so the panel never offers text it can no longer insert.
+  return raw.flatMap((item) => {
+    if (item.channel) return [item];
+    if (!item.task || item.task === 'reply') return [{ ...item, channel: 'comment' as const }];
+    return [];
+  });
 }
 
 export async function clearHistory(): Promise<void> {

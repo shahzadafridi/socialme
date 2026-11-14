@@ -116,21 +116,6 @@ export const xAdapter: PlatformAdapter = {
     return buttons.find((b) => b.getAttribute('aria-disabled') !== 'true' && isVisible(b)) ?? null;
   },
 
-  async openComposer() {
-    const before = new Set(Array.from(document.querySelectorAll('[role="dialog"]')));
-    const trigger =
-      document.querySelector<HTMLElement>('[data-testid="SideNav_NewTweet_Button"]') ??
-      document.querySelector<HTMLElement>('a[href="/compose/post"]') ??
-      document.querySelector<HTMLElement>('[aria-label="Post"]');
-    if (!trigger) return null;
-    humanClick(trigger);
-    return waitFor(() => editorInNewScope(before), { timeout: 7000 });
-  },
-
-  submitPostButton(editor) {
-    return this.submitButton(editor);
-  },
-
   hasContent(editor) {
     return editor.isConnected && normalizeText(editor.innerText).length > 0;
   },

@@ -14,7 +14,7 @@ const PLATFORM_OPTIONS: Array<{ id: PlatformId; label: string }> = [
 const MODES: Array<{ value: OutputMode; label: string }> = [
   { value: 'review', label: 'Review' },
   { value: 'insert', label: 'Insert' },
-  { value: 'auto', label: 'Auto-post' },
+  { value: 'auto', label: 'Auto-send' },
 ];
 
 export function SafetyTab({
@@ -68,8 +68,8 @@ export function SafetyTab({
         />
         <div className="note">
           <b>Review</b> keeps the draft in the panel until you insert it. <b>Insert</b> types it into
-          the box and leaves sending to you. <b>Auto-post</b> types it and presses send after a
-          human-shaped delay. Review is the only mode that can never post by accident.
+          the box and leaves sending to you. <b>Auto-send</b> types it and presses send after a
+          human-shaped delay. Review is the only mode that can never send by accident.
         </div>
         <div className="grid-3">
           {PLATFORM_OPTIONS.map((platform) => (
@@ -177,7 +177,7 @@ export function SafetyTab({
           checked={safety.pauseOnWarning}
           onChange={(value) => onChange({ safety: { ...safety, pauseOnWarning: value } })}
           label="Stop when the platform warns the account"
-          hint="Watches for restriction banners, 'unusual activity' notices and verification challenges. When one appears, auto-posting is blocked until you clear it."
+          hint="Watches for restriction banners, 'unusual activity' notices and verification challenges. When one appears, auto-sending is blocked until you clear it."
         />
 
         <div className="note">
@@ -186,12 +186,12 @@ export function SafetyTab({
         </div>
       </Card>
 
-      <Card title="Automatic posting" desc="Off by default. Only used when the output mode is Auto-post.">
+      <Card title="Automatic sending" desc="Off by default. Only used when the output mode is Auto-send.">
         <Toggle
           checked={settings.autoSubmit.enabled}
           onChange={(value) => onChange({ autoSubmit: { ...settings.autoSubmit, enabled: value } })}
           label="Allow SocialMe to press send"
-          hint="When off, nothing is ever published without you clicking the button."
+          hint="When off, nothing is ever sent without you clicking the button."
         />
         <div className="grid-2">
           <Field label="Delay before sending" hint="Randomized pause between these values, in ms.">
@@ -224,7 +224,7 @@ export function SafetyTab({
               <span style={{ color: 'var(--faint)', fontSize: 12 }}>ms</span>
             </div>
           </Field>
-          <Field label="Confirm before publishing" hint="One line in the panel. Keeps you from posting to the wrong thread.">
+          <Field label="Confirm before sending" hint="One line in the panel. Keeps you from sending to the wrong thread.">
             <Toggle
               checked={settings.autoSubmit.requireConfirm}
               onChange={(value) =>
@@ -278,7 +278,7 @@ export function SafetyTab({
           {PLATFORM_OPTIONS.map((platform) => (
             <div className="usage__item" key={platform.id}>
               <span className="usage__num">{usage?.submitted[platform.id] ?? 0}</span>
-              posted on {PLATFORMS[platform.id].label}
+              sent on {PLATFORMS[platform.id].label}
             </div>
           ))}
           <div className="usage__item">
@@ -295,9 +295,10 @@ export function SafetyTab({
       </Card>
 
       <Note tone="warn">
-        Automation of posting is against the terms of LinkedIn and X, and Meta restricts automated
-        engagement. SocialMe reduces the risk — human pacing, caps, no duplicate text, warning
-        detection — but the decision to auto-post is yours. On an account you care about, use Review.
+        Automation of commenting and messaging is against the terms of LinkedIn and X, and Meta
+        restricts automated engagement. SocialMe reduces the risk — human pacing, caps, no
+        duplicate text, warning detection — but the decision to auto-send is yours. On an account
+        you care about, use Review.
       </Note>
     </>
   );

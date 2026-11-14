@@ -2,7 +2,13 @@
 
 export type PlatformId = 'linkedin' | 'x' | 'facebook';
 
-export type TaskKind = 'reply' | 'post' | 'repurpose';
+/**
+ * SocialMe only writes replies. Every draft is one of:
+ * - `comment`: a public comment under a post, or a reply to another comment;
+ * - `dm`: a reply inside a direct-message thread;
+ * - `note`: the note attached to a LinkedIn connection request.
+ */
+export type Channel = 'comment' | 'dm' | 'note';
 
 /** How a generated draft reaches the platform. */
 export type OutputMode = 'review' | 'insert' | 'auto';
@@ -11,7 +17,6 @@ export type TypingSpeed = 'fast' | 'natural' | 'careful';
 
 /** How much of a DM thread is sent as context. */
 export type DmContext = 'last' | 'last3' | 'all';
-
 
 export type Angle =
   | 'insight'
@@ -77,7 +82,6 @@ export interface Persona {
   hashtagLevel: 'none' | 'light' | 'heavy';
   cta: string;
   replyMaxChars: number;
-  postMaxChars: number;
   signOff: string;
   language: string;
 }
@@ -86,7 +90,6 @@ export interface Defaults {
   angle: Angle;
   tone: string;
   replyLength: Length;
-  postLength: Length;
   extraInstruction: string;
 }
 
@@ -131,7 +134,7 @@ export interface ActivityEvent {
 }
 
 export interface Settings {
-  version: 2;
+  version: 3;
   onboarded: boolean;
   providers: ProviderSettings[];
   activeProvider: ProviderId;
@@ -163,7 +166,7 @@ export interface HistoryItem {
   id: string;
   ts: number;
   platform: PlatformId;
-  task: TaskKind;
+  channel: Channel;
   personaId: string;
   angle: Angle;
   postExcerpt: string;
@@ -188,6 +191,7 @@ export interface PublicSettings {
   historyEnabled: boolean;
 }
 
+/** The post, comment or thread a draft answers. */
 export interface PostContext {
   platform: PlatformId;
   url: string;
@@ -197,16 +201,32 @@ export interface PostContext {
   meta?: string;
 }
 
+/** The specific comment being answered inside a post's comment thread. */
+export interface ReplyTarget {
+  author?: string;
+  text: string;
+}
+
+/** The person a connection note is addressed to. */
+export interface RecipientContext {
+  name?: string;
+  headline?: string;
+  meta?: string;
+}
+
 /* ------------------------------------------------------------------ */
 /* Messaging                                                           */
 /* ------------------------------------------------------------------ */
 
 export interface GenerateRequest {
-  task: TaskKind;
   platform: PlatformId;
-  /** 'post' = public comment/post, 'dm' = direct message thread. */
-  channel?: 'post' | 'dm';
-  post?: { author?: string; text: string; meta?: string };
+  channel: Channel;
+  /** The post (comment channel), transcript (dm) or profile (note). */
+  post?: { author?: string; authorHeadline?: string; text: string; meta?: string };
+  /** Nested comment replies: the comment this one answers, not the post. */
+  replyingTo?: ReplyTarget;
+  /** Connection notes: who the invite goes to. */
+  recipient?: RecipientContext;
   personaId?: string;
   angle?: Angle;
   tone?: string;
@@ -225,7 +245,7 @@ export type PortMessage =
 
 export interface DraftActionPayload {
   platform: PlatformId;
-  task: TaskKind;
+  channel: Channel;
   personaId: string;
   angle: Angle;
   postExcerpt: string;

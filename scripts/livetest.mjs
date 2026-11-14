@@ -186,6 +186,19 @@ try {
 
   const uiEval = (sessionId, body) => evaluate(sessionId, `(() => { ${PRELUDE} ${body} })()`);
 
+  /** Hover a post and open the panel on it (the panel needs a post to reply to). */
+  const previewPost = async (sessionId) => {
+    await uiEval(
+      sessionId,
+      `const post = document.querySelector('[role=listitem], article');
+       if (!post) return false;
+       post.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+       return true;`,
+    );
+    await sleep(400);
+    await uiEval(sessionId, `$('.ap-launcher').click(); return true;`);
+  };
+
   /** Trusted click, like a user: scroll into view then dispatch real mouse events. */
   const realClick = async (sessionId, selector) => {
     const point = await uiEval(
@@ -414,67 +427,6 @@ try {
       return 'streamed straight into the comment field';
     });
 
-    section(`${platform}: new post`);
-    await reload(session, platform);
-    await waitFor(session, `return Boolean($('.ap-launcher'));`, { label: 'reload' });
-
-    await test('compose a post into the platform composer', async () => {
-      await uiEval(session, `$('.ap-launcher').click(); return true;`);
-      await waitFor(session, `return Boolean($('.ap-panel'));`, { label: 'panel' });
-
-      await uiEval(
-        session,
-        `const tab = $$('.ap-tab').find((t) => t.textContent.trim() === 'New post');
-         tab.click(); return true;`,
-      );
-      await sleep(200);
-      await uiEval(
-        session,
-        `const input = $$('.ap-input').find((i) => i.placeholder && /what I learned|mention|topic/i.test(i.placeholder)) || $('.ap-input');
-         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-         setter.call(input, 'What I learned shipping v1 in six weeks');
-         input.dispatchEvent(new Event('input', { bubbles: true }));
-         return true;`,
-      );
-      await uiEval(
-        session,
-        `const b = $$('.ap-foot .ap-btn').find((x) => /Generate/.test(x.textContent));
-         b.click(); return true;`,
-      );
-      await waitFor(
-        session,
-        `const t = $('.ap-draft'); return Boolean(t && !t.readOnly && t.value.trim().length > 40);`,
-        { timeout: 20000, label: 'post draft' },
-      );
-      await uiEval(
-        session,
-        `const b = $$('.ap-foot .ap-btn').find((x) => x.textContent.trim() === 'Insert');
-         b.click(); return true;`,
-      );
-      let text = '';
-      try {
-        text = await waitFor(
-          session,
-          `const ed = document.querySelector('.share-creation-state .ql-editor, [role="dialog"] [data-testid^="tweetTextarea"], [role="dialog"] [contenteditable="true"][role="textbox"]');
-           return ed && (ed.innerText || '').trim().length > 40 ? ed.innerText.trim() : '';`,
-          { timeout: 20000, label: 'composer text' },
-        );
-      } catch (err) {
-        const debug = await uiEval(
-          session,
-          `return {
-             status: $('.ap-status')?.textContent?.trim() || '',
-             error: $('.ap-error')?.textContent?.trim() || '',
-             draft: ($('.ap-draft')?.value || '').slice(0, 40),
-             dialogs: document.querySelectorAll('[role="dialog"]').length,
-             editors: document.querySelectorAll('.ql-editor, [contenteditable="true"]').length
-           };`,
-        );
-        throw new Error(`composer not filled — ${JSON.stringify(debug)}`);
-      }
-      expect(text.includes('The part nobody mentions'), `composer had "${text.slice(0, 50)}"`);
-      return 'post composed';
-    });
   }
 
   section('linkedin: inbox reply');
@@ -509,13 +461,85 @@ try {
     return text.slice(0, 60);
   });
 
+  /* ------------------------- reply to a comment ---------------------------- */
+
+  section('linkedin: reply to a comment');
+  const replySession = await load('linkedin');
+
+  await test('✦ answers the commenter, not the post', async () => {
+    await waitFor(replySession, `return Boolean(document.querySelector('#comment-sam'));`, {
+      label: 'comment fixture',
+    });
+    await uiEval(
+      replySession,
+      `document.querySelector('#comment-sam button[aria-label=Reply]').click(); return true;`,
+    );
+    await waitFor(replySession, `return Boolean(document.querySelector('#comment-sam .socialme-quick'));`, {
+      timeout: 12000,
+      label: 'quick button',
+    });
+    await evaluate(replySession, `document.querySelector('#comment-sam .socialme-quick').click(); true`);
+    await chooseTone(replySession, 'Default');
+
+    await waitFor(
+      replySession,
+      `const ed = document.querySelector('#comment-sam .reply-box .editor');
+       return ed && (ed.innerText || '').trim().length > 40;`,
+      { timeout: 20000, label: 'nested draft' },
+    );
+
+    const prompt = servers.stats.lastPrompt ?? '';
+    expect(prompt.includes('THE COMMENT I AM ANSWERING'), 'the comment block is missing from the prompt');
+    expect(prompt.includes('Sam Okafor'), 'the commenter is missing from the prompt');
+    expect(
+      prompt.includes('was that cycle time or review time'),
+      'the comment text is missing from the prompt',
+    );
+    return 'comment context reached the prompt';
+  });
+
+  /* --------------------------- connection notes ---------------------------- */
+
+  section('linkedin: connection note');
+  const noteSession = await load('linkedin');
+
+  await test('✦ writes the 300-character invite note', async () => {
+    await waitFor(noteSession, `return Boolean(document.querySelector('.invite button'));`, {
+      label: 'invite card',
+    });
+    await uiEval(noteSession, `document.querySelector('.invite button').click(); return true;`);
+    await waitFor(noteSession, `return Boolean(document.querySelector('#connect-dialog .socialme-quick'));`, {
+      timeout: 12000,
+      label: 'note quick button',
+    });
+    await evaluate(
+      noteSession,
+      `document.querySelector('#connect-dialog .socialme-quick').click(); true`,
+    );
+    await chooseTone(noteSession, 'Default');
+
+    const text = await waitFor(
+      noteSession,
+      `const ta = document.querySelector('#invite-note');
+       return ta && ta.value.trim().length > 40 ? ta.value.trim() : '';`,
+      { timeout: 20000, label: 'note draft' },
+    );
+
+    const prompt = servers.stats.lastPrompt ?? '';
+    expect(prompt.includes('CONNECTION-REQUEST NOTES'), 'the note guide is missing from the prompt');
+    expect(prompt.includes('Maya Chen'), 'the recipient name is missing from the prompt');
+    expect(prompt.includes('Northwind'), 'the recipient headline is missing from the prompt');
+    expect(prompt.includes('Hard max 300 characters'), 'the 300-character cap is missing');
+    return text.slice(0, 50);
+  });
+
   /* -------------------------------- safety -------------------------------- */
 
   section('safety: limits and warnings');
   const safetySession = await load('linkedin');
   await waitFor(safetySession, `return Boolean($('.ap-launcher'));`, { label: 'linkedin' });
 
-  await test('daily cap blocks further posts', async () => {
+  await test('daily cap blocks further sends', async () => {
     await seed({
       safety: { ...baseSettings.safety, maxActionsPerDay: 1 },
     });
@@ -529,7 +553,8 @@ try {
     await waitFor(safetySession, `return Boolean($('.ap-launcher'));`, {
       label: 'reload',
     });
-    await uiEval(safetySession, `$('.ap-launcher').click(); return true;`);
+    // The panel only writes replies now, so give it a hovered post to answer.
+    await previewPost(safetySession);
     await waitFor(safetySession, `return Boolean($('.ap-panel'));`, { label: 'panel' });
     await uiEval(
       safetySession,
@@ -549,7 +574,7 @@ try {
     );
     await uiEval(
       safetySession,
-      `const b = $$('.ap-foot .ap-btn').find((x) => x.textContent.includes('Insert & post'));
+      `const b = $$('.ap-foot .ap-btn').find((x) => x.textContent.includes('Insert & send'));
        b.click(); return true;`,
     );
     const status = await waitFor(
@@ -561,7 +586,7 @@ try {
     return status.slice(0, 60);
   });
 
-  await test('restriction banner blocks auto-posting', async () => {
+  await test('restriction banner blocks automatic sending', async () => {
     await seed({ safety: { ...baseSettings.safety, maxActionsPerDay: 50 } });
     await reload(safetySession, 'linkedin');
     await waitFor(safetySession, `return Boolean($('.ap-launcher'));`, {
@@ -578,7 +603,7 @@ try {
        })()`,
     );
     await sleep(2200);
-    await uiEval(safetySession, `$('.ap-launcher').click(); return true;`);
+    await previewPost(safetySession);
     await waitFor(safetySession, `return Boolean($('.ap-panel'));`, { label: 'panel' });
     await uiEval(
       safetySession,
@@ -599,7 +624,7 @@ try {
     const info = await uiEval(
       safetySession,
       `const warn = $('.ap-warnbox');
-       const btn = $$('.ap-foot .ap-btn').find((x) => x.textContent.includes('Insert & post'));
+       const btn = $$('.ap-foot .ap-btn').find((x) => x.textContent.includes('Insert & send'));
        return { warn: warn ? warn.textContent.trim().slice(0, 60) : '', disabled: btn ? btn.disabled : null, draft: ($('.ap-draft')?.value || '').length };`,
     );
     expect(info.warn.length > 0, 'no warning banner in the panel');
@@ -630,7 +655,8 @@ try {
     await waitFor(safetySession, `return Boolean($('.ap-launcher'));`, {
       label: 'reload',
     });
-    await uiEval(safetySession, `$('.ap-launcher').click(); return true;`);
+    // The panel only writes replies now, so give it a hovered post to answer.
+    await previewPost(safetySession);
     await waitFor(safetySession, `return Boolean($('.ap-panel'));`, { label: 'panel' });
     await uiEval(
       safetySession,

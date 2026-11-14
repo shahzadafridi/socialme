@@ -76,7 +76,7 @@ regression is covered.
 
 1. Implement `PlatformAdapter` in `lib/integrations/<network>.ts`
    (`findPosts`, `readPost`, `actionAnchor`, `openReplyEditor`, `submitButton`, `findOpenEditors`,
-   `postForEditor`, `findMessageComposers`, `readConversation`, `openComposer`, `submitPostButton`,
+   `postForEditor`, `findMessageComposers`, `readConversation`, `findNoteEditors`, `readNoteRecipient`,
    `hasContent`).
 2. Register it in `lib/integrations/index.ts`.
 3. Add the host to `wxt.config.ts` (content-script matches + provider host permissions if needed).

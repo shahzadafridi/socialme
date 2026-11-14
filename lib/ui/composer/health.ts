@@ -4,7 +4,7 @@ import { findToolbar } from '@/lib/ui/composer/placement';
 
 export const HEALTH_KEY = 'socialme.health.v1';
 
-export type SurfaceMode = 'comment' | 'dm';
+export type SurfaceMode = 'comment' | 'dm' | 'note';
 
 export interface SurfaceHealth {
   mode: SurfaceMode;
@@ -66,6 +66,9 @@ function inspect(
   try {
     if (mode === 'dm') {
       context = Boolean(adapter.readConversation(editor, 1)?.text);
+    } else if (mode === 'note') {
+      const recipient = adapter.readNoteRecipient?.(editor);
+      context = Boolean(recipient?.name || recipient?.headline);
     } else {
       const postEl = adapter.postForEditor(editor);
       const post = postEl ? adapter.readPost(postEl) : null;
@@ -85,7 +88,7 @@ function inspect(
     strategy,
     submit,
     context,
-    ok: Boolean(toolbar) && context,
+    ok: (Boolean(toolbar) || editor.tagName === 'TEXTAREA') && context,
   };
 }
 
@@ -115,9 +118,22 @@ export function checkPlatformHealth(adapter: PlatformAdapter): PlatformHealth {
     problems.push(`message composers: ${(error as Error)?.message ?? error}`);
   }
 
+  try {
+    const notes = adapter.findNoteEditors?.() ?? [];
+    for (const editor of notes.slice(0, 2)) {
+      surfaces.push(inspect(adapter, editor, 'note'));
+    }
+  } catch (error) {
+    problems.push(`connection notes: ${(error as Error)?.message ?? error}`);
+  }
+
   for (const surface of surfaces) {
     if (!surface.toolbar) problems.push(`${surface.mode}: icon row not found`);
-    if (!surface.context) problems.push(`${surface.mode}: ${surface.mode === 'dm' ? 'thread' : 'post'} not readable`);
+    if (!surface.context) {
+      const subject =
+        surface.mode === 'dm' ? 'thread' : surface.mode === 'note' ? 'recipient' : 'post';
+      problems.push(`${surface.mode}: ${subject} not readable`);
+    }
     if (!surface.submit) problems.push(`${surface.mode}: send control not found`);
   }
 

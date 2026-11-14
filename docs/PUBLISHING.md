@@ -86,11 +86,11 @@ It adds a small star icon to the comment box. Click it, pick a tone, and it writ
 
 The same works in direct messages: open a conversation, click the star, and it answers the last message the other person sent you.
 
-There is a full panel too, with angles such as a sharp question, a personal story or respectful disagreement, plus tone, length and a rough quality score. New post and repurpose are there when you want to write your own content.
+There is a full panel too, with angles such as a sharp question, a personal story or respectful disagreement, plus tone, length and a rough quality score. When you reply to someone else's comment it answers that person, not the post, and on LinkedIn it writes the 300-character note that goes with a connection request.
 
 What makes it sound like you is Brand and Voice: your positioning, the topics you want to be known for, the things you never say, and two or three posts you actually wrote.
 
-On safety: it types at a human pace, keeps hourly and daily caps, and stops itself if the platform shows a warning. Auto-posting is off by default.
+On safety: it types at a human pace, keeps hourly and daily caps, and stops itself if the platform shows a warning. Automatic sending is off by default.
 
 You connect your own AI account with an API key and pay that provider directly. Your key stays in your browser, and there is no account, no analytics and no server of mine.
 
@@ -157,7 +157,7 @@ No. The extension does not load or execute remote code. All JavaScript is bundle
 
 ## 6. Privacy practices tab
 
-- **Single purpose:** "Write social media replies and posts in the user's own voice."
+- **Single purpose:** "Write social media comments, message replies and connection notes in the user's own voice."
 - **Data usage:** state honestly that post text and the user's writing preferences are transmitted
   to the AI provider the user selects, and that the developer receives nothing.
 - Tick the certifications: no sale of data, no use unrelated to the single purpose, no credit checks.
@@ -184,7 +184,7 @@ Chrome reviewers look for:
 | Remote code | None; everything is bundled |
 | Broad host access | Only three social hosts + provider APIs |
 | Hidden data collection | Privacy policy + questionnaire; no telemetry in code |
-| Deceptive behaviour | Auto-posting is off by default and clearly labelled |
+| Deceptive behaviour | Automatic sending is off by default and clearly labelled |
 | Unrequested UI | The icon only appears in comment/DM toolbars |
 
 If a reviewer asks for a demo account: describe the bring-your-own-key model — no account exists.

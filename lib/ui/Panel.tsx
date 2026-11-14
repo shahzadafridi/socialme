@@ -17,7 +17,6 @@ import type {
   PortMessage,
   PostContext,
   PublicSettings,
-  TaskKind,
 } from '@/lib/core/types';
 import { Icon } from '@/lib/ui/icons';
 import { copyText, excerpt, openOptionsPage } from '@/lib/ui/util';
@@ -46,8 +45,6 @@ interface PanelProps {
   platform: PlatformId;
   post: PostContext | null;
   postEl: HTMLElement | null;
-  task: TaskKind;
-  onTask: (task: TaskKind) => void;
   onClose: () => void;
   onToast: (message: string) => void;
 }
@@ -60,8 +57,6 @@ export function Panel({
   platform,
   post,
   postEl,
-  task,
-  onTask,
   onClose,
   onToast,
 }: PanelProps) {
@@ -73,9 +68,7 @@ export function Panel({
   const [personaId, setPersonaId] = useState(initialPersona);
   const [angle, setAngle] = useState<Angle>(settings.defaults.angle);
   const [tone, setTone] = useState(settings.defaults.tone || '');
-  const [length, setLength] = useState<Length>(
-    task === 'reply' ? settings.defaults.replyLength : settings.defaults.postLength,
-  );
+  const [length, setLength] = useState<Length>(settings.defaults.replyLength);
   const [language, setLanguage] = useState('auto');
   const [extra, setExtra] = useState(settings.defaults.extraInstruction || '');
 
@@ -110,11 +103,10 @@ export function Panel({
     [settings.personas, personaId],
   );
 
-  const limit = useMemo(() => {
-    const base = task === 'reply' ? persona.replyMaxChars : persona.postMaxChars;
-    if (task === 'reply') return platform === 'x' ? Math.min(base, 280) : Math.max(120, base);
-    return Math.max(120, Math.min(base, PLATFORMS[platform].postLimit));
-  }, [persona, task, platform]);
+  const limit = useMemo(
+    () => Math.max(120, Math.min(persona.replyMaxChars, PLATFORMS[platform].commentLimit)),
+    [persona, platform],
+  );
 
   const report = useMemo(
     () => (draft.trim() ? analyzeDraft(draft, platform, limit) : null),
@@ -122,8 +114,8 @@ export function Panel({
   );
 
   useEffect(() => {
-    setLength(task === 'reply' ? settings.defaults.replyLength : settings.defaults.postLength);
-  }, [task, settings.defaults.replyLength, settings.defaults.postLength]);
+    setLength(settings.defaults.replyLength);
+  }, [settings.defaults.replyLength]);
 
   useEffect(() => {
     if (!settings.personas.some((p) => p.id === personaId)) {
@@ -136,7 +128,7 @@ export function Panel({
     setRejected([]);
     setError(null);
     setStatus(null);
-  }, [post?.url, task]);
+  }, [post?.url]);
 
   const refreshUsage = useCallback(() => {
     getUsage()
@@ -180,9 +172,8 @@ export function Panel({
   const generate = useCallback(
     (isRegenerate = false) => {
       if (streaming) return;
-      if (task === 'reply' && !post) return;
-      if (task === 'post' && !extra.trim() && !post) {
-        setStatus({ text: 'Describe what the post should be about first.', tone: 'warn' });
+      if (!post) {
+        setStatus({ text: 'Open a post first — SocialMe replies to posts and comments.', tone: 'warn' });
         return;
       }
 
@@ -196,12 +187,9 @@ export function Panel({
       setStreaming(true);
 
       const request: GenerateRequest = {
-        task,
         platform,
-        post:
-          post && task !== 'post'
-            ? { author: post.author, text: post.text, meta: post.meta }
-            : undefined,
+        channel: 'comment',
+        post: { author: post.author, authorHeadline: post.authorHeadline, text: post.text, meta: post.meta },
         personaId: persona.id,
         angle,
         tone: tone || undefined,
@@ -265,15 +253,12 @@ export function Panel({
 
       port.postMessage({ type: 'start', request });
     },
-    [angle, draft, extra, language, length, persona.id, platform, post, rejected, streaming, task, tone],
+    [angle, draft, extra, language, length, persona.id, platform, post, rejected, streaming, tone],
   );
 
   const resolveEditor = useCallback(async (): Promise<HTMLElement | null> => {
-    if (task === 'reply') {
-      return postEl ? adapter.openReplyEditor(postEl) : null;
-    }
-    return adapter.openComposer();
-  }, [adapter, postEl, task]);
+    return postEl ? adapter.openReplyEditor(postEl) : null;
+  }, [adapter, postEl]);
 
   const perform = useCallback(
     async (submit: boolean) => {
@@ -326,7 +311,7 @@ export function Panel({
         if (settings.historyEnabled) {
           void addHistory({
             platform,
-            task,
+            channel: 'comment',
             personaId: persona.id,
             angle,
             postExcerpt: post?.text ?? extra,
@@ -337,11 +322,11 @@ export function Panel({
 
         if (submit && result.submitted) {
           void recordUsage(platform, 'submit');
-          setStatus({ text: 'Posted. Check the page to confirm.', tone: 'ok' });
-          onToast('Posted');
+          setStatus({ text: 'Sent. Check the page to confirm.', tone: 'ok' });
+          onToast('Sent');
           refreshUsage();
         } else if (submit) {
-          setStatus({ text: result.reason ?? 'Inserted — press send to publish.', tone: 'warn' });
+          setStatus({ text: result.reason ?? 'Inserted — press the send button yourself.', tone: 'warn' });
         } else {
           setStatus({ text: 'Inserted. Review it on the page, then send.', tone: 'ok' });
           onToast('Inserted into the editor');
@@ -365,7 +350,6 @@ export function Panel({
       settings.historyEnabled,
       settings.safety.humanTyping,
       settings.safety.typingSpeed,
-      task,
       onToast,
     ],
   );
@@ -416,7 +400,7 @@ export function Panel({
     onToast(ok ? 'Copied' : 'Copy failed');
   }, [draft, onToast]);
 
-  const describeAction = task === 'reply' ? 'Generate reply' : task === 'post' ? 'Generate post' : 'Repurpose post';
+  const describeAction = 'Generate reply';
   const canAuto = settings.autoSubmit.enabled;
   const sourceText = post?.text?.trim() ?? '';
 
@@ -443,22 +427,8 @@ export function Panel({
         </div>
 
         <div className="ap-body">
-          <div className="ap-tabs">
-            {(['reply', 'post', 'repurpose'] as TaskKind[]).map((tab) => (
-              <button
-                key={tab}
-                className="ap-tab"
-                data-active={task === tab}
-                onClick={() => onTask(tab)}
-                disabled={tab !== 'post' && !post}
-                title={
-                  tab !== 'post' && !post ? 'Open a post first, or use the inline ✦ button' : undefined
-                }
-                style={tab !== 'post' && !post ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
-              >
-                {tab === 'reply' ? 'Reply' : tab === 'post' ? 'New post' : 'Repurpose'}
-              </button>
-            ))}
+          <div className="ap-mode">
+            <Icon name="spark" size={11} /> Comment reply
           </div>
 
           {warning ? (
@@ -475,35 +445,34 @@ export function Panel({
             </div>
           ) : null}
 
-          {task !== 'post' &&
-            (post ? (
-              <div className="ap-source" data-expanded={expanded}>
-                <div className="ap-source__top">
-                  <span className="ap-source__author">{post.author}</span>
-                  {post.meta ? <span className="ap-source__meta">· {excerpt(post.meta, 40)}</span> : null}
-                </div>
-                <div className="ap-source__text">
-                  {sourceText || 'No text detected in this post (image or video only).'}
-                </div>
-                {sourceText.length > 190 ? (
-                  <button className="ap-source__more" onClick={() => setExpanded((v) => !v)}>
-                    {expanded ? 'Show less' : 'Show more'}
-                  </button>
-                ) : null}
-                {!sourceText ? (
-                  <div className="ap-source__empty">
-                    Add context below so the draft is not generic.
-                  </div>
-                ) : null}
+          {post ? (
+            <div className="ap-source" data-expanded={expanded}>
+              <div className="ap-source__top">
+                <span className="ap-source__author">{post.author}</span>
+                {post.meta ? <span className="ap-source__meta">· {excerpt(post.meta, 40)}</span> : null}
               </div>
-            ) : (
-              <div className="ap-source">
+              <div className="ap-source__text">
+                {sourceText || 'No text detected in this post (image or video only).'}
+              </div>
+              {sourceText.length > 190 ? (
+                <button className="ap-source__more" onClick={() => setExpanded((v) => !v)}>
+                  {expanded ? 'Show less' : 'Show more'}
+                </button>
+              ) : null}
+              {!sourceText ? (
                 <div className="ap-source__empty">
-                  No post selected. Hover a post and click <b>✦ SocialMe</b> in its action bar, or press{' '}
-                  <span className="ap-kbd">⌘⇧A</span>.
+                  Add context below so the draft is not generic.
                 </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="ap-source">
+              <div className="ap-source__empty">
+                No post selected. Hover a post and press <span className="ap-kbd">⌘⇧A</span>, or use the{' '}
+                <b>✦</b> button inside any comment box.
               </div>
-            ))}
+            </div>
+          )}
 
           <div>
             <div className="ap-label">
@@ -600,14 +569,12 @@ export function Panel({
               </select>
             </div>
             <div style={{ flex: 1.6 }}>
-              <div className="ap-label">{task === 'post' ? 'Topic' : 'This one'}</div>
+              <div className="ap-label">This one</div>
               <input
                 className="ap-input"
                 value={extra}
                 onChange={(event) => setExtra(event.target.value)}
-                placeholder={
-                  task === 'post' ? 'e.g. what I learned shipping v1' : 'e.g. mention the 3-week launch'
-                }
+                placeholder="e.g. mention the 3-week launch"
               />
             </div>
           </div>
@@ -734,13 +701,13 @@ export function Panel({
               className="ap-warnbox"
               style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}
             >
-              <span>Post this to {PLATFORMS[platform].label} now?</span>
+              <span>Send this comment to {PLATFORMS[platform].label} now?</span>
               <span style={{ display: 'flex', gap: 6 }}>
                 <button className="ap-btn" onClick={() => setConfirming(false)}>
                   Cancel
                 </button>
                 <button className="ap-btn ap-btn--primary" onClick={() => void perform(true)}>
-                  Post
+                  Send
                 </button>
               </span>
             </div>
@@ -761,8 +728,8 @@ export function Panel({
             <button
               className="ap-btn ap-btn--primary ap-btn--wide"
               onClick={() => generate(Boolean(draft.trim()))}
-              disabled={task === 'reply' && !post}
-              title={task === 'reply' && !post ? 'Select a post first' : undefined}
+              disabled={!post}
+              title={!post ? 'Select a post first' : undefined}
             >
               <Icon name="spark" size={14} />
               {draft.trim() ? 'Regenerate' : describeAction}
@@ -799,10 +766,10 @@ export function Panel({
                 title={
                   warning && settings.safety.pauseOnWarning
                     ? 'Resolve the account warning first'
-                    : 'Insert and publish'
+                    : 'Insert and send'
                 }
               >
-                Insert &amp; post
+                Insert &amp; send
               </button>
             ) : null}
           </div>
@@ -818,7 +785,7 @@ export function Panel({
             </button>
             {canAuto ? (
               <span className="ap-hint" style={{ fontSize: 10.5 }}>
-                {submittedToday}/{settings.safety.maxActionsPerDay || '∞'} posted today
+                {submittedToday}/{settings.safety.maxActionsPerDay || '∞'} sent today
               </span>
             ) : null}
           </div>

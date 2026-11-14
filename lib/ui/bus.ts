@@ -3,7 +3,7 @@
  * Uses DOM events rather than module state so it cannot break if the bundle is split.
  */
 
-export type OpenPayload = { el: HTMLElement | null; task?: 'reply' | 'post' | 'repurpose' };
+export type OpenPayload = { el: HTMLElement | null };
 
 export const OPEN_EVENT = 'socialme:open';
 export const TOGGLE_EVENT = 'socialme:toggle';

@@ -20,7 +20,6 @@ function persona(overrides: Partial<Persona> & { id: string; name: string }): Pe
     hashtagLevel: 'light',
     cta: '',
     replyMaxChars: 700,
-    postMaxChars: 1800,
     signOff: '',
     language: 'auto',
     ...overrides,
@@ -38,7 +37,6 @@ export const STARTER_PERSONAS: Persona[] = [
     avoid: 'Hype, corporate jargon, motivational fluff, emoji spam.',
     bannedWords: 'game-changer, synergy, leverage, delve',
     replyMaxChars: 500,
-    postMaxChars: 1400,
     hashtagLevel: 'light',
   }),
   persona({
@@ -53,7 +51,6 @@ export const STARTER_PERSONAS: Persona[] = [
       'Lead with the claim, then the evidence, then the implication. Use one specific number when possible. Sound like someone who has shipped, not someone who has read about it.',
     avoid: 'Generic advice, hedging, listicles in comments.',
     replyMaxChars: 700,
-    postMaxChars: 1800,
     hashtagLevel: 'light',
   }),
   persona({
@@ -65,7 +62,6 @@ export const STARTER_PERSONAS: Persona[] = [
       'Talk like a friend in a group chat. One idea per message. Lowercase is fine. Never more than 3 sentences.',
     avoid: 'Long paragraphs, formal transitions, buzzwords.',
     replyMaxChars: 300,
-    postMaxChars: 900,
     emojiLevel: 'light',
     hashtagLevel: 'none',
   }),
@@ -106,7 +102,7 @@ export const DEFAULT_SAFETY: SafetySettings = {
 
 export function defaultSettings(): Settings {
   return {
-    version: 2,
+    version: 3,
     onboarded: false,
     providers: [
       makeProvider('deepseek'),
@@ -130,7 +126,6 @@ export function defaultSettings(): Settings {
       angle: 'insight',
       tone: '',
       replyLength: 'medium',
-      postLength: 'medium',
       extraInstruction: '',
     },
     outputMode: 'review',
@@ -171,16 +166,19 @@ export function mergeSettings(stored: unknown): Settings {
     }
   }
 
-  const migrated = input.version === undefined || input.version < 2;
-
   return {
     ...base,
     ...input,
-    version: 2,
+    version: 3,
     providers,
     brand: { ...base.brand, ...(input.brand ?? {}) },
     personas: input.personas?.length ? input.personas : base.personas,
-    defaults: { ...base.defaults, ...(input.defaults ?? {}) },
+    defaults: {
+      angle: input.defaults?.angle ?? base.defaults.angle,
+      tone: input.defaults?.tone ?? base.defaults.tone,
+      replyLength: input.defaults?.replyLength ?? base.defaults.replyLength,
+      extraInstruction: input.defaults?.extraInstruction ?? base.defaults.extraInstruction,
+    },
     platformPersona: { ...base.platformPersona, ...(input.platformPersona ?? {}) },
     platformOutputMode: { ...base.platformOutputMode, ...(input.platformOutputMode ?? {}) },
     autoSubmit: { ...base.autoSubmit, ...(input.autoSubmit ?? {}) },

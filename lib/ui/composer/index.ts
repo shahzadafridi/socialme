@@ -7,16 +7,23 @@ import {
   placeCaretAtEnd,
 } from '@/lib/integrations/insert';
 import { contextLimit } from '@/lib/integrations/messaging';
-import type { PlatformAdapter } from '@/lib/integrations/adapter';
+import { readCommentBeingRepliedTo, type PlatformAdapter } from '@/lib/integrations/adapter';
 import { typeLikeHuman } from '@/lib/features/safety/humanize';
+import { NOTE_LIMIT } from '@/lib/core/constants';
 import { addHistory, getSettings, resolvePersona, saveLastDraft } from '@/lib/data/storage';
-import type { GenerateRequest, PortMessage, Settings } from '@/lib/core/types';
+import type { Channel, GenerateRequest, PortMessage, Settings } from '@/lib/core/types';
 import type { Mode } from '@/lib/ui/composer/types';
 import { type Entry, setState, styleButton } from '@/lib/ui/composer/button';
 import { insertButton } from '@/lib/ui/composer/placement';
 import { openToneMenu } from '@/lib/ui/composer/menu';
 
 const BUTTON_CLASS = 'socialme-quick';
+
+const CHANNEL_OF: Record<Mode, Channel> = {
+  comment: 'comment',
+  dm: 'dm',
+  note: 'note',
+};
 
 function appendDelta(editor: HTMLElement, delta: string): void {
   if (!delta) return;
@@ -36,6 +43,18 @@ function appendDelta(editor: HTMLElement, delta: string): void {
   }
 }
 
+/**
+ * LinkedIn rejects an invitation note over 300 characters and its textarea refuses
+ * the extra keystrokes, so cut on a word boundary before writing. The prompt already
+ * aims below the cap; this only catches models that overshoot.
+ */
+function fitNote(text: string): string {
+  if (text.length <= NOTE_LIMIT) return text;
+  const cut = text.slice(0, NOTE_LIMIT);
+  const space = cut.lastIndexOf(' ');
+  return (space > NOTE_LIMIT * 0.75 ? cut.slice(0, space) : cut).trimEnd();
+}
+
 async function finish(
   entry: Entry,
   text: string,
@@ -43,7 +62,7 @@ async function finish(
   adapter: PlatformAdapter,
   postText: string,
 ): Promise<void> {
-  const clean = text.trim();
+  const clean = entry.mode === 'note' ? fitNote(text.trim()) : text.trim();
   entry.busy = false;
   entry.port = null;
   if (!clean) {
@@ -70,7 +89,7 @@ async function finish(
   if (settings.historyEnabled) {
     void addHistory({
       platform: adapter.id,
-      task: 'reply',
+      channel: CHANNEL_OF[entry.mode],
       personaId: resolvePersona(settings, adapter.id).id,
       angle: settings.defaults.angle,
       postExcerpt: postText,
@@ -81,7 +100,7 @@ async function finish(
   setState(entry, 'done');
 }
 
-/** Adds an icon button to the toolbar of every open comment box. */
+/** Adds an icon button to every open comment box, DM composer and invite note. */
 export function installComposerButtons(
   adapter: PlatformAdapter,
   isEnabled: () => boolean,
@@ -108,7 +127,11 @@ export function installComposerButtons(
     button.className = BUTTON_CLASS;
     button.setAttribute(
       'aria-label',
-      mode === 'dm' ? 'SocialMe: draft a message reply' : 'SocialMe: write this comment',
+      mode === 'dm'
+        ? 'SocialMe: draft a message reply'
+        : mode === 'note'
+          ? 'SocialMe: write this connection note'
+          : 'SocialMe: write this comment',
     );
     styleButton(button);
 
@@ -152,25 +175,41 @@ export function installComposerButtons(
       const tone = choice.tone === 'Default' ? undefined : choice.tone;
 
       const settings = await getSettings();
+      const channel = CHANNEL_OF[mode];
 
       let context: { author: string; text: string; meta?: string } | null = null;
+      let replyingTo: { author?: string; text: string } | undefined;
+      let recipient: { name?: string; headline?: string } | undefined;
+      let excerpt = '';
+
       if (mode === 'dm') {
         const thread = adapter.readConversation(editor, contextLimit(settings.dmContext));
-        context = thread
-          ? { author: thread.author, text: thread.text }
-          : null;
+        context = thread ? { author: thread.author, text: thread.text } : null;
         if (!context) {
           setState(entry, 'error', 'Could not read this conversation');
           return;
         }
+        excerpt = thread?.text ?? '';
+      } else if (mode === 'note') {
+        recipient = adapter.readNoteRecipient?.(editor) ?? undefined;
+        excerpt = [recipient?.name, recipient?.headline].filter(Boolean).join(' · ');
       } else {
         const postEl = adapter.postForEditor(editor);
         const post = postEl ? adapter.readPost(postEl) : null;
-        context = post ? { author: post.author, text: post.text, meta: post.meta } : null;
+        context = post
+          ? {
+              author: post.author,
+              text: post.text,
+              meta: post.meta,
+            }
+          : null;
         if (!context || (!context.text && !context.author)) {
           setState(entry, 'error', 'Could not read the post above this box');
           return;
         }
+        // A reply box under a comment answers that person, not the post author.
+        replyingTo = readCommentBeingRepliedTo(editor) ?? undefined;
+        excerpt = replyingTo?.text ?? context.text;
       }
 
       const persona = resolvePersona(settings, adapter.id);
@@ -181,10 +220,13 @@ export function installComposerButtons(
       setState(entry, 'busy');
 
       const request: GenerateRequest = {
-        task: 'reply',
         platform: adapter.id,
-        channel: mode === 'dm' ? 'dm' : 'post',
-        post: context,
+        channel,
+        post: context
+          ? { author: context.author, text: context.text, meta: context.meta }
+          : undefined,
+        replyingTo,
+        recipient,
         personaId: persona.id,
         angle: settings.defaults.angle,
         tone: tone ?? (settings.defaults.tone || undefined),
@@ -205,8 +247,8 @@ export function installComposerButtons(
       }
       entry.port = port;
 
-      // Textarea composers (X chat) are framework-owned: stream into our own
-      // buffer and write once, so a single input event carries the whole draft.
+      // Textarea composers (X chat, invite notes) are framework-owned: stream into
+      // our own buffer and write once, so a single input event carries the draft.
       const buffered = editor instanceof HTMLTextAreaElement;
 
       port.onMessage.addListener((message: PortMessage) => {
@@ -214,7 +256,7 @@ export function installComposerButtons(
           entry.text += message.text;
           if (!buffered) appendDelta(editor, message.text);
         } else if (message.type === 'done') {
-          void finish(entry, message.text, settings, adapter, context.text);
+          void finish(entry, message.text, settings, adapter, excerpt);
         } else if (message.type === 'error') {
           entry.busy = false;
           entry.port = null;
@@ -224,7 +266,7 @@ export function installComposerButtons(
       });
 
       port.onDisconnect.addListener(() => {
-        if (entry.busy && entry.text) void finish(entry, entry.text, settings, adapter, context.text);
+        if (entry.busy && entry.text) void finish(entry, entry.text, settings, adapter, excerpt);
       });
 
       port.postMessage({ type: 'start', request });
@@ -238,6 +280,7 @@ export function installComposerButtons(
     if (stopped || !isEnabled()) return;
     let commentEditors: HTMLElement[] = [];
     let messageEditors: HTMLElement[] = [];
+    let noteEditors: HTMLElement[] = [];
     try {
       commentEditors = adapter.findOpenEditors();
     } catch {
@@ -248,9 +291,15 @@ export function installComposerButtons(
     } catch {
       messageEditors = [];
     }
+    try {
+      noteEditors = adapter.findNoteEditors?.() ?? [];
+    } catch {
+      noteEditors = [];
+    }
 
     for (const editor of commentEditors) if (!entries.has(editor)) mount(editor, 'comment');
     for (const editor of messageEditors) if (!entries.has(editor)) mount(editor, 'dm');
+    for (const editor of noteEditors) if (!entries.has(editor)) mount(editor, 'note');
 
     for (const [editor, entry] of entries) {
       if (!editor.isConnected) {

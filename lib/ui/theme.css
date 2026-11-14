@@ -221,34 +221,20 @@
 
 /* --------------------------------- tabs -------------------------------- */
 
-.ap-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
-  padding: 3px;
-  background: var(--ap-elev);
+.ap-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
   border: 1px solid var(--ap-border-soft);
-  border-radius: 11px;
-}
-
-.ap-tab {
-  padding: 6px 4px;
-  border-radius: 8px;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 999px;
+  background: var(--ap-elev);
   color: var(--ap-muted);
-  transition: all 0.14s ease;
-}
-
-.ap-tab:hover {
-  color: var(--ap-text);
-}
-
-.ap-tab[data-active='true'] {
-  background: var(--ap-elev-2);
-  color: var(--ap-text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* -------------------------------- source -------------------------------- */

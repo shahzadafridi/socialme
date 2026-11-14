@@ -31,8 +31,6 @@ const fakeAdapter: PlatformAdapter = {
   actionAnchor: () => null,
   openReplyEditor: async () => null,
   submitButton: () => null,
-  openComposer: async () => null,
-  submitPostButton: () => null,
   hasContent: () => false,
   findOpenEditors: () => [],
   findMessageComposers: () => [],
@@ -179,8 +177,6 @@ function PanelStage({ theme }: { theme: 'dark' | 'light' }) {  const [settings, 
           platform="linkedin"
           post={mockPost}
           postEl={null}
-          task="reply"
-          onTask={noop}
           onClose={noop}
           onToast={(message) => console.log(message)}
         />

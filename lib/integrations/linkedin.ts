@@ -1,7 +1,7 @@
 import { dropNested, isVisible, waitFor } from '@/lib/shared/dom';
 import { humanClick } from '@/lib/integrations/insert';
 import { findMessageComposers, readThread } from '@/lib/integrations/messaging';
-import { normalizeText, type PlatformAdapter } from '@/lib/integrations/adapter';
+import { firstText, normalizeText, type PlatformAdapter } from '@/lib/integrations/adapter';
 
 /**
  * LinkedIn replaced its entire class vocabulary with hashed CSS-module names and
@@ -130,6 +130,66 @@ function editorCandidates(post: HTMLElement): HTMLElement[] {
   ).filter((node) => isVisible(node) && node.getBoundingClientRect().height > 0);
 }
 
+/**
+ * The note attached to a connection request. LinkedIn caps it at 300 characters
+ * and labels the box "Add a note", so either signal identifies it; comment boxes
+ * inside the feed are excluded.
+ */
+function noteEditors(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      'textarea, [contenteditable="true"], [role="textbox"]',
+    ),
+  ).filter((node) => {
+    if (!isVisible(node)) return false;
+    if (node.closest('[role="listitem"]')) return false;
+    const hint = `${node.getAttribute('aria-label') ?? ''} ${node.getAttribute('placeholder') ?? ''} ${node.getAttribute('data-placeholder') ?? ''}`;
+    const maxLength = node instanceof HTMLTextAreaElement ? node.maxLength : -1;
+    return (
+      /note|invitation/i.test(hint) ||
+      (Boolean(node.closest('[role="dialog"]')) && maxLength === 300)
+    );
+  });
+}
+
+const GENERIC_INVITE_HEADING =
+  /^(add a note|add a note to (your|the) invitation|invite|invitation|connect|grow your network|my network|sent invitations?|invitations?|people you may know)$/i;
+
+function personFromInvite(scope: ParentNode): { name: string; headline: string } {
+  const link = Array.from(scope.querySelectorAll<HTMLElement>('a[href*="/in/"]')).find((node) =>
+    isVisible(node),
+  );
+  if (!link) return { name: '', headline: '' };
+
+  const own = (link.innerText ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let name = own[0] ?? '';
+  let headline = own[1] ?? '';
+
+  // The headline usually sits next to the name link, not inside it.
+  let node = link.parentElement;
+  for (let depth = 0; !headline && node && depth < 3; depth += 1) {
+    const lines = (node.innerText ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!name && lines[0]) name = lines[0];
+    headline =
+      lines.find(
+        (line) =>
+          line !== name &&
+          line.length > 8 &&
+          line.length < 160 &&
+          !/connect|invite|add a note/i.test(line),
+      ) ?? '';
+    node = node.parentElement;
+  }
+
+  return { name, headline };
+}
+
 export const linkedinAdapter: PlatformAdapter = {
   id: 'linkedin',
 
@@ -206,43 +266,6 @@ export const linkedinAdapter: PlatformAdapter = {
     return null;
   },
 
-  async openComposer() {
-    const trigger =
-      document.querySelector<HTMLElement>('button.share-box-feed-entry__trigger') ??
-      document.querySelector<HTMLElement>('[aria-label*="Start a post"]') ??
-      Array.from(document.querySelectorAll<HTMLElement>('[role="button"], button')).find((node) =>
-        /start a post|create a post/i.test(
-          `${node.getAttribute('aria-label') ?? ''} ${node.innerText ?? ''}`,
-        ),
-      ) ??
-      null;
-    if (!trigger) return null;
-    humanClick(trigger);
-
-    return waitFor(
-      () =>
-        Array.from(
-          document.querySelectorAll<HTMLElement>(
-            '[role="dialog"] [contenteditable="true"], [role="dialog"] textarea',
-          ),
-        ).find(isVisible) ?? null,
-      { timeout: 8000 },
-    );
-  },
-
-  submitPostButton(editor) {
-    const dialog = editor.closest('[role="dialog"]') ?? document;
-    const buttons = Array.from(dialog.querySelectorAll<HTMLElement>('button, [role="button"]'));
-    return (
-      buttons.find((btn) => {
-        if (!isVisible(btn)) return false;
-        if (btn.getAttribute('aria-disabled') === 'true' || btn.hasAttribute('disabled')) return false;
-        const label = (btn.getAttribute('aria-label') ?? '').trim();
-        return /^(post|share)$/i.test(label) || /^post$/i.test((btn.innerText ?? '').trim());
-      }) ?? null
-    );
-  },
-
   hasContent(editor) {
     if (!editor.isConnected) return false;
     const value =
@@ -277,6 +300,54 @@ export const linkedinAdapter: PlatformAdapter = {
 
   readConversation(editor, maxMessages) {
     return readThread(editor, maxMessages);
+  },
+
+  findNoteEditors() {
+    return noteEditors();
+  },
+
+  readNoteRecipient(editor) {
+    const dialog = editor.closest('[role="dialog"]');
+    const scope: ParentNode = dialog ?? document;
+    let { name, headline } = personFromInvite(scope);
+
+    if (!name) {
+      const value =
+        editor instanceof HTMLTextAreaElement ? editor.value : (editor.innerText ?? '');
+      const match = value.match(
+        /^\s*(?:hi|hello|hey)[ ,]+([\p{L}][\p{L}.'-]*(?:\s+[\p{L}][\p{L}.'-]*){0,2})/iu,
+      );
+      if (match) name = match[1].trim();
+    }
+
+    if (!name && /^\/in\//.test(location.pathname)) {
+      const main = document.querySelector('main') ?? document.body;
+      name = normalizeText(main.querySelector<HTMLElement>('h1')?.innerText).slice(0, 80);
+      if (!headline) {
+        headline = firstText(main, [
+          'h1 + div',
+          '.text-body-medium',
+          '[class*="text-body-medium"]',
+          '[class*="pv-text-details__left-panel"]',
+        ]).slice(0, 160);
+      }
+    }
+
+    if (!name) {
+      name =
+        Array.from(scope.querySelectorAll<HTMLElement>('h1, h2, h3, [role="heading"]'))
+          .map((node) => normalizeText(node.innerText))
+          .find(
+            (text) =>
+              text.length > 1 &&
+              text.length < 60 &&
+              !GENERIC_INVITE_HEADING.test(text) &&
+              !/^(invite|add a note)\b/i.test(text),
+          ) ?? '';
+    }
+
+    headline = headline.trim().slice(0, 160);
+    return name || headline ? { name: name || undefined, headline: headline || undefined } : null;
   },
 
   postForEditor(editor) {

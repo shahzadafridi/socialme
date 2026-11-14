@@ -47,10 +47,16 @@ export function setState(entry: Entry, state: 'idle' | 'busy' | 'done' | 'error'
     button.title =
       entry.mode === 'dm'
         ? 'SocialMe — draft a reply to this conversation'
-        : 'SocialMe — write this comment in your voice';
+        : entry.mode === 'note'
+          ? 'SocialMe — write this connection note'
+          : 'SocialMe — write this comment in your voice';
     button.setAttribute(
       'aria-label',
-      entry.mode === 'dm' ? 'SocialMe: draft a message reply' : 'SocialMe: write this comment',
+      entry.mode === 'dm'
+        ? 'SocialMe: draft a message reply'
+        : entry.mode === 'note'
+          ? 'SocialMe: write this connection note'
+          : 'SocialMe: write this comment',
     );
   } else if (state === 'busy') {
     button.textContent = '···';

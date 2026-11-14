@@ -1,4 +1,4 @@
-import { closestWithChildren, dropNested, findByText, isVisible, waitFor } from '@/lib/shared/dom';
+import { closestWithChildren, dropNested, isVisible, waitFor } from '@/lib/shared/dom';
 import { humanClick } from '@/lib/integrations/insert';
 import { findMessageComposers, readThread } from '@/lib/integrations/messaging';
 import { normalizeText, type PlatformAdapter } from '@/lib/integrations/adapter';
@@ -153,39 +153,6 @@ export const facebookAdapter: PlatformAdapter = {
         const text = btn.innerText ?? '';
         const enabled = btn.getAttribute('aria-disabled') !== 'true';
         return enabled && isVisible(btn) && (/^comment$/i.test(label) || /comment|reply/i.test(text));
-      }) ?? null
-    );
-  },
-
-  async openComposer() {
-    const trigger =
-      findByText(
-        document,
-        /what'?s on your mind|create post|write something/i,
-        'div[role="button"], button',
-      ) ?? document.querySelector<HTMLElement>('[aria-label="Create post"]');
-    if (!trigger) return null;
-    humanClick(trigger);
-
-    return waitFor(
-      () =>
-        Array.from(
-          document.querySelectorAll<HTMLElement>(
-            '[role="dialog"] [contenteditable="true"][role="textbox"]',
-          ),
-        ).find(isVisible) ?? null,
-      { timeout: 8000 },
-    );
-  },
-
-  submitPostButton(editor) {
-    const dialog = editor.closest('[role="dialog"]') ?? document;
-    const buttons = Array.from(dialog.querySelectorAll<HTMLElement>('[role="button"], button'));
-    return (
-      buttons.find((btn) => {
-        const label = btn.getAttribute('aria-label') ?? '';
-        const enabled = btn.getAttribute('aria-disabled') !== 'true';
-        return enabled && isVisible(btn) && /^post$/i.test(label);
       }) ?? null
     );
   },

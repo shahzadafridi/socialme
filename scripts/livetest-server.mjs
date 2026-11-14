@@ -51,6 +51,12 @@ const LINKEDIN = `<!doctype html><html><head><meta charset="utf-8"><title>Feed |
  .comment-box{display:flex;gap:8px;margin-top:10px}
  .editor{flex:1;min-height:38px;border:1px solid #ccc;border-radius:18px;padding:8px 12px;outline:none}
  .send{border:0;background:#0a66c2;color:#fff;border-radius:16px;padding:8px 14px;cursor:pointer}
+ .comment{padding:10px 0 0;border-top:1px solid #eee;margin-top:10px}
+ .comment .body{margin:4px 0}
+ .invite{background:#fff;border:1px solid #e0dfdc;border-radius:8px;padding:14px;display:flex;align-items:center;gap:12px}
+ .invite button{margin-left:auto;border:1px solid #0a66c2;background:#fff;color:#0a66c2;border-radius:16px;padding:6px 14px;cursor:pointer}
+ #connect-dialog{position:fixed;inset:0;margin:auto;width:360px;height:max-content;background:#fff;border:1px solid #ccc;border-radius:8px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+ #connect-dialog textarea{width:100%;height:90px;box-sizing:border-box;margin-top:8px}
 </style></head><body>
 <div class="feed" role="list">
   <div role="listitem">
@@ -66,7 +72,26 @@ const LINKEDIN = `<!doctype html><html><head><meta charset="utf-8"><title>Feed |
       <button aria-label="Repost">Repost</button>
       <a href="#" aria-label="Send">Send</a>
     </div>
-    <div class="comments"></div>
+    <div class="comments">
+      <div class="comment" id="comment-sam">
+        <div class="actor">
+          <a href="https://www.linkedin.com/in/sam-okafor/"><span>Sam Okafor</span></a>
+          <div class="headline"><span>Engineering lead at Helio</span></div>
+        </div>
+        <div class="body"><p><span>The 34% is doing a lot of work there — was that cycle time or review time?</span></p></div>
+        <div class="row">
+          <button aria-label="Like">Like</button>
+          <button aria-label="Reply" onclick="openReply(this)">Reply</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="invite">
+    <div>
+      <div class="actor"><a href="https://www.linkedin.com/in/maya-chen/"><span>Maya Chen</span></a></div>
+      <div class="headline">VP Product at Northwind</div>
+    </div>
+    <button aria-label="Invite Maya Chen to connect" onclick="openConnect(this)">Connect</button>
   </div>
   <div class="share-box"><button class="share-box-feed-entry__trigger" onclick="openComposer()">Start a post</button></div>
 </div>
@@ -88,6 +113,45 @@ function openComposer() {
   dialog.append(ed, send);
   document.body.appendChild(dialog);
   ed.focus();
+}
+function openReply(btn) {
+  const comment = btn.closest('.comment');
+  if (comment.querySelector('.reply-box')) return;
+  const box = document.createElement('div');
+  box.className = 'comment-box reply-box';
+  const ed = document.createElement('div');
+  ed.className = 'editor';
+  ed.setAttribute('contenteditable', 'true');
+  ed.setAttribute('role', 'textbox');
+  ed.setAttribute('aria-label', "Reply to Sam Okafor's comment");
+  const send = document.createElement('button');
+  send.className = 'send';
+  send.setAttribute('aria-label', 'Reply');
+  send.textContent = 'Reply';
+  send.onclick = () => { submitText(ed, 'linkedin-reply'); box.remove(); };
+  box.append(ed, send);
+  comment.appendChild(box);
+  ed.focus();
+}
+function openConnect(btn) {
+  if (document.querySelector('#connect-dialog')) return;
+  const dialog = document.createElement('div');
+  dialog.id = 'connect-dialog';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-label', 'Invite Maya Chen to connect');
+  dialog.innerHTML =
+    '<div class="actor"><a href="https://www.linkedin.com/in/maya-chen/"><span>Maya Chen</span></a></div>' +
+    '<div class="headline">VP Product at Northwind</div>' +
+    '<label for="invite-note">Add a note to your invitation</label>' +
+    '<textarea id="invite-note" aria-label="Add a note" maxlength="300"></textarea>' +
+    '<button aria-label="Send invitation">Send</button>';
+  const note = dialog.querySelector('textarea');
+  dialog.querySelector('button').onclick = () => {
+    window.__posted.push({ platform: 'linkedin-note', text: note.value });
+    dialog.remove();
+  };
+  document.body.appendChild(dialog);
+  note.focus();
 }
 function openComment(btn) {
   const post = btn.closest('[role=listitem]');

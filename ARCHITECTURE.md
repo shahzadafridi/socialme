@@ -111,7 +111,7 @@ If a change would violate the rule, it usually means the logic belongs in a feat
 
 | Module | Responsibility | Depends on |
 |---|---|---|
-| `core/ai/prompt` | Build the prompt from brand + persona + platform + task | core types/constants |
+| `core/ai/prompt` | Build the prompt from brand + persona + platform + channel | core types/constants |
 | `core/ai/providers` | One streaming interface over OpenAI-compatible, Anthropic, Gemini | core constants |
 | `data/storage` | Typed repositories, secret handling, usage, migrations | core, browser storage |
 | `integrations/*` | Read posts, open editors, submit, read DM threads | core, shared |
@@ -133,8 +133,10 @@ If a change would violate the rule, it usually means the logic belongs in a feat
 click ✦
   └─ openToneMenu()                       ui/composer/menu
        └─ { tone, instruction }
-  └─ adapter.readPost() | readConversation()    integrations
-       └─ { author, text }
+  └─ adapter.readPost() | readConversation() | readNoteRecipient()   integrations
+       └─ { author, text } | { name, headline }
+  └─ readCommentBeingRepliedTo()          integrations/adapter
+       └─ nested replies answer the comment, not the post
   └─ runtime.connect('socialme:gen')      background
        └─ getSettings + getApiKey + resolvePersona + buildPrompt
        └─ streamCompletion() ── SSE ──► port.postMessage({type:'delta'})
@@ -146,13 +148,13 @@ click ✦
 ### 5.2 Sending with the safety gate
 
 ```
-panel "Insert & post"
+panel "Insert & send"
   └─ checkAllowance(platform, safety)     features/safety/limits
        ├─ daily cap / hourly cap / minimum gap / warm-up
        └─ refusal returns a human reason and a retry time
   └─ warning present? → block (safety/watch)
   └─ deliverDraft() → insert → randomised delay → submit button (or ⌘↵)
-  └─ hasContent() after 900 ms decides "posted" vs "still in the box"
+  └─ hasContent() after 900 ms decides "sent" vs "still in the box"
 ```
 
 ### 5.3 Which prompt the model sees
@@ -160,10 +162,10 @@ panel "Insert & post"
 ```
 system = identity (persona)
        + brand block (positioning, pillars, proof, POV, forbidden)
-       + platform guide (LinkedIn comment vs X post …)
+       + channel guide (comment, DM or connection note)
        + hard rules (no invented stats, no cliché openers, no AI tells)
        + tone / emoji / hashtag / length limits / language
-user   = task + angle + length target + source post or DM transcript
+user   = task + angle + length target + source post / comment / transcript / recipient
        + rejected drafts (regenerate) + my instruction for this one
 ```
 
@@ -176,13 +178,13 @@ optional — if it is empty the block is omitted entirely.
 
 ```ts
 Settings {
-  version: 2
+  version: 3
   providers[]        // 7 presets, user-editable baseUrl/model/temperature
   activeProvider
   brand              // positioning, pillars, proof, POV, offer, goals, forbidden
   personas[]         // voice rules, samples, caps
   platformPersona    // per-network override
-  defaults           // angle, tone, length, standing instruction
+  defaults           // angle, tone, reply length, standing instruction
   outputMode         // review | insert | auto (+ per-platform)
   autoSubmit         // enabled, delay range, confirm
   safety             // typing, gap, hourly/daily caps, warm-up, pause-on-warning
@@ -222,9 +224,9 @@ interface PlatformAdapter {
   postForEditor(editor): HTMLElement | null;
   findMessageComposers(): HTMLElement[];
   readConversation(editor, maxMessages?): { author; text } | null;
-  // new post
-  openComposer(): Promise<HTMLElement | null>;
-  submitPostButton(editor): HTMLElement | null;
+  // connection-request notes (LinkedIn)
+  findNoteEditors?(): HTMLElement[];
+  readNoteRecipient?(editor): RecipientContext | null;
 }
 ```
 
@@ -250,7 +252,7 @@ Adding a network = implement the interface + register it in `integrations/index.
 | Key exfiltration by the page | Keys live in the background worker; content scripts can only ask for a completion |
 | Prompt leakage | Requests are built in the background; the page sees only the final text |
 | Remote code | No remote scripts; providers are called directly over HTTPS |
-| Unapproved publishing | Auto-post is off by default; confirm + caps + gap + warning pause |
+| Unapproved publishing | Auto-send is off by default; confirm + caps + gap + warning pause |
 | Data leaving the machine | Only the provider request; no analytics, no sync, export excludes secrets |
 
 Threat model note: the content script trusts the DOM it reads, so post text is treated as data, never
@@ -265,7 +267,7 @@ as instructions — the prompt labels it as a source post and the hard rules for
 "Open settings" link. Provider bodies are truncated into the message so the user sees "Invalid API
 key" rather than "request failed".
 
-The Data tab shows the last scan per tab (posts matched, action rows, editors, DM composers, the
+The Data tab shows the last scan per tab (posts matched, action rows, editors, DM composers, note boxes, the
 transcript, the real class chain, and any boot error). That is the first place to look when a
 platform changes.
 
@@ -308,7 +310,7 @@ Fixtures mirror the current production DOM (hashed classes included for LinkedIn
 | A network | `integrations/<name>.ts` + registry + manifest host + fixture |
 | An AI provider | `PROVIDER_PRESETS` + a `kind` in `providers.ts` if it is not OpenAI-compatible |
 | A new writing angle | `ANGLES` + one entry in `ANGLE_GUIDE` |
-| A new task (e.g. thread) | `TaskKind`, a branch in `taskBlock`, a tab in the panel |
+| A new channel (e.g. follow-up after connecting) | `Channel`, a branch in `taskBlock`, a mode in `ui/composer/types.ts` |
 | A tone | `TONE_OPTIONS` in `ui/composer/menu.ts` (+ the panel list) |
 | A side panel UI | new entrypoint that reuses `Panel` and `features/deliver` |
 
@@ -316,11 +318,11 @@ Fixtures mirror the current production DOM (hashed classes included for LinkedIn
 
 ## 13. Known limitations / next
 
-- All six composer surfaces (comment and DM on all three networks) are verified live, including
-  X Chat, whose composer lives in a shadow root.
+- Every reply surface (comment, nested reply, DM and the LinkedIn invite note) is covered by the
+  health check and the live fixtures; X Chat lives in a shadow root and is handled like the rest.
 - Selectors are best-effort by nature; the health check and diagnostics exist because redesigns
   happen. See "When a site changes" below.
-- Auto-posting is against the platforms' terms; it stays opt-in and capped.
+- Auto-sending is against the platforms' terms; it stays opt-in and capped.
 - Firefox needs a `browser_specific_settings` id; the code is otherwise portable.
 - No variants ("give me three") yet; regenerate with an angle change is the current workaround.
 

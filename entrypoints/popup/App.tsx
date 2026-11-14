@@ -68,7 +68,7 @@ export function PopupApp() {
           <b>{settings?.outputMode ?? '—'}</b>
         </div>
         <div className="pop__row">
-          <span>Posted today</span>
+          <span>Sent today</span>
           <b>
             {usage
               ? Object.values(usage.submitted).reduce<number>((sum, n) => sum + (n ?? 0), 0)
@@ -106,7 +106,7 @@ export function PopupApp() {
         <div className="pop__hint">
           Open any post and press <kbd>⌘</kbd>
           <kbd>⇧</kbd>
-          <kbd>A</kbd> to write a reply in your voice.
+          <kbd>A</kbd> to reply in your voice.
         </div>
       </footer>
     </div>

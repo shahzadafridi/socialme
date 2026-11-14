@@ -4,6 +4,13 @@ import type { Entry } from '@/lib/ui/composer/button';
 const TONE_OPTIONS: Record<Mode, string[]> = {
   comment: ['Default', 'Natural', 'Friendly', 'Formal', 'Confident', 'Concise', 'Contrarian', 'Curious'],
   dm: ['Default', 'Natural', 'Friendly', 'Formal', 'Concise', 'Follow-up', 'Confident', 'Empathetic'],
+  note: ['Default', 'Warm', 'Direct', 'Curious', 'Professional', 'Concise', 'Confident'],
+};
+
+const MODE_TITLE: Record<Mode, string> = {
+  comment: 'Comment',
+  dm: 'Reply',
+  note: 'Connection note',
 };
 
 /**
@@ -35,7 +42,7 @@ export function openToneMenu(entry: Entry): Promise<MenuChoice | null> {
     ].join(';');
 
     const title = document.createElement('div');
-    title.textContent = entry.mode === 'dm' ? 'Reply' : 'Comment';
+    title.textContent = MODE_TITLE[entry.mode] ?? 'Comment';
     title.style.cssText =
       'padding:6px 8px 5px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7c8598';
     menu.appendChild(title);
@@ -61,7 +68,10 @@ export function openToneMenu(entry: Entry): Promise<MenuChoice | null> {
     menu.appendChild(input);
 
     const hint = document.createElement('div');
-    hint.textContent = 'e.g. mention my portfolio, keep it under 2 lines';
+    hint.textContent =
+      entry.mode === 'note'
+        ? 'e.g. we met at the Berlin meetup, keep it short'
+        : 'e.g. mention my portfolio, keep it under 2 lines';
     hint.style.cssText = 'padding:4px 9px 6px;font-size:10.5px;color:#5f6879';
     menu.appendChild(hint);
 

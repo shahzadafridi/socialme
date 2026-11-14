@@ -61,7 +61,7 @@ export function ProvidersTab({
       </div>
 
       <Note>
-        Comments and posts are generated with short prompts, so a cheap model is usually enough.
+        Comments and message replies are generated with short prompts, so a cheap model is usually enough.
         DeepSeek or GPT-4o-mini cost a fraction of a cent per draft. Use a stronger model only if the
         drafts feel flat.
       </Note>

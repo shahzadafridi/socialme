@@ -37,15 +37,17 @@ export default defineBackground(() => {
     }
   });
 
-  browser.runtime.onMessage.addListener((message: any) => {
+  browser.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
+    // Callback style, not a returned promise: older Chrome ignores a promise returned from an
+    // onMessage listener and hands the sender `undefined`, while sendResponse works everywhere.
     if (message?.type === 'socialme:open-options') {
       void browser.runtime.openOptionsPage();
-      return Promise.resolve({ ok: true });
+      sendResponse({ ok: true });
+      return;
     }
     if (message?.type === 'socialme:ping') {
-      return Promise.resolve({ ok: true });
+      sendResponse({ ok: true });
     }
-    return undefined;
   });
 
   /**

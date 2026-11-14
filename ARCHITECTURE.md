@@ -316,9 +316,10 @@ Fixtures mirror the current production DOM (hashed classes included for LinkedIn
 
 ## 13. Known limitations / next
 
-- X and Facebook DM composers are implemented generically (label + geometry) but only LinkedIn
-  messaging has been verified against a live account.
-- Selectors are best-effort by nature; the diagnostics panel exists because redesigns happen.
+- All six composer surfaces (comment and DM on all three networks) are verified live, including
+  X Chat, whose composer lives in a shadow root.
+- Selectors are best-effort by nature; the health check and diagnostics exist because redesigns
+  happen. See "When a site changes" below.
 - Auto-posting is against the platforms' terms; it stays opt-in and capped.
 - Firefox needs a `browser_specific_settings` id; the code is otherwise portable.
 - No variants ("give me three") yet; regenerate with an angle change is the current workaround.
@@ -335,3 +336,34 @@ Fixtures mirror the current production DOM (hashed classes included for LinkedIn
 | Heuristic + semantic adapters | Snapshot tests of saved HTML | Live DOM changes too fast; diagnostics give real evidence |
 | BYO key, no backend | Hosted proxy | No server to run, no key custody, works offline with Ollama |
 | Diagnostics in storage | Console logging | A support surface the user can read and paste |
+
+---
+
+## 15. When a site changes
+
+Nothing is allowed to depend on a single selector. Every surface has a fallback ladder, and the
+rung that matched is recorded so a fix targets the right place.
+
+| Surface | Order tried |
+|---|---|
+| Icon row | emoji anchor → media-icon row → icons positioned near the editor |
+| Comment editor | label match → comment form ancestor → article ancestor → dialog ancestor |
+| DM editor | label match → messaging wrapper → shadow-DOM deep query |
+| X chat | `textarea[data-testid]` → same field re-resolved after X re-renders |
+| DM transcript | platform classes (LinkedIn) → list scan → ancestor climb |
+
+**Diagnosing a report.** Options → Data has two cards:
+
+- *Composer health* — per surface: editor, which strategy matched, send control, context readable.
+  A redesign shows up as one red line, not a vague "it stopped working".
+- *Last page scan* — node counts, class chains and button labels seen on the page.
+
+**Fixing it.** Change the selector or add a rung in `lib/integrations/<platform>.ts` (or
+`lib/ui/composer/placement.ts` for the icon row), run `npm run test:logic`, bump the version in
+both `package.json` and `wxt.config.ts`, `npm run build`, zip `dist/chrome-mv3`, upload. Keep
+`npm run test:live` green against a signed-in tab before publishing.
+
+**Deliberately not done.** No remote selector config and no fetched rules: the package stays
+self-contained, so a store review cannot be avoided anyway and there is no third-party endpoint
+to trust. The trade-off is that a fix waits for review. The health check is what makes that wait
+tolerable — breakage is known the same day rather than after complaints.

@@ -16,20 +16,41 @@ Free and open source. No account, no telemetry, no server. Keys stay in your bro
 
 ## What it does
 
+### New in 0.8.2
+
+- **Provider model dropdowns:** load the catalogue returned by each provider, refresh it, and retain your saved selection. Custom endpoints can still use a manual model ID. Gemini and Anthropic pagination and Ollama’s native catalogue are supported.
+- **Shared voice guide:** preview and apply the supplied engineering communication guide in Voice. Your real samples, proof and provider settings are preserved; guide examples remain labelled illustrations.
+
+### New in 0.8.1
+
+- **My rough thought:** add your point before generating, in the inline menu, full panel or voice preview. The model is instructed to preserve your opinion, qualifications and uncertainty; style and angle choices must not replace it.
+- **Source → reply examples:** approve a post or message together with your edited reply. Add examples directly in Voice without a provider key, or save them from a reply. Relevant pairs are selected for future prompts as style references, never as factual proof.
+- **Control your examples:** inspect and remove pairs in Voice or Assistant. Backups include them. Message pairs are used only in message replies; at most two pairs are included in each request.
+
+### New in 0.8
+
+- **Assistant home:** start a three-conversation session, save threads and manage a local follow-up queue. Progress counts your explicit reviews, not inferred posts or growth.
+- **A more personal voice:** My voice examples and identity carry across topic voices. Starter examples are illustrations, never your experience. No forced clever takes, brand connections, closing questions or padded replies.
+- **Voice calibration:** choose formality, contractions and question frequency. Approve feedback below a draft, try a rewrite, or save an edited reply as a style example. Manage saved feedback in Assistant.
+- **Relevant brand context:** use it when relevant, restrict replies to your topics, or switch it off. Forbidden claims always remain in force.
+- **Visible conversation suggestions:** open SocialMe without a selected post to see up to five readable posts, ranked by matching topic words. Nothing is crawled or sent to a model for these hints.
+- **Per-platform pause:** pause or resume assistance from the panel or Assistant settings.
+- **Follow-ups stay local:** they appear when you open SocialMe; no messages or notifications are sent automatically. Paste a direct conversation link when the platform does not expose one.
+
 | | |
 |---|---|
-| 💬 **Comment replies** | A ✦ in every comment box. It reads the post, author and headline, then streams a reply into the box. |
+| 💬 **Comment replies** | A ✦ in every comment box. Preview the source context, generate a reply, then replace existing text with review and Undo. |
 | 🧵 **Reply to a comment** | The ✦ in a reply box answers that person, not the post — so threads actually continue. |
 | ✉️ **DM replies** | Reads the last 1, 3 or 12 messages and answers the most recent one. |
 | 🔗 **Connection notes** | Writes the 300-character LinkedIn invite note from the person's name and headline. |
 | 🎭 **Eight voices** | `My voice` is the default; switch to Thought leader, Principal Architect, AI Builder and more. |
 | 🎚️ **Voice + tone in one click** | The ✦ menu has a voice selector, tone chips and an optional instruction. |
-| 🧠 **Full panel** (`⌘⇧A`) | Eight angles, tone, length, language, quality score, regenerate and recent drafts. |
+| 🧠 **Full panel** (`⌘⇧A`) | Eight angles, tone, length, language, context checks, refinement and recent drafts. |
 | 🏷️ **Brand + voice** | Positioning, pillars, proof, POV, writing samples and banned words. It sounds like you. |
 | 📏 **Guardrails** | Character caps, no cliché openers, no invented facts, no engagement bait, no forced emoji. |
-| 🛡️ **Account safety** | Human-paced typing, hourly/daily caps, warning detection, auto-send off by default. |
+| 🛡️ **Sending controls** | Human-paced typing, shared hourly/daily limits across tabs, warning detection, auto-send off by default. |
 | 🔌 **Your provider** | OpenAI, DeepSeek, OpenRouter, Gemini, Anthropic, Ollama or any OpenAI-compatible endpoint. |
-| 🔒 **Local-first** | Everything is in `chrome.storage.local`; API keys never reach the page. Export/import any time. |
+| 🔒 **Local-first** | Data stays in `chrome.storage.local`; model requests go to your selected provider. Back up settings, voices, drafts and usage without keys. |
 | 🩺 **Diagnostics** | Composer health for LinkedIn, X and Facebook plus a per-page scan when a platform changes. |
 
 ## One click on every surface
@@ -78,8 +99,8 @@ The draft lands in the box; you edit it and press Comment yourself.
   <img src="docs/store/screenshot-1.png" alt="The SocialMe panel" width="760">
 </p>
 
-`⌘⇧A` on a post opens the panel: eight angles, tone, length, language, a quality score with
-specificity and cliché checks, regenerate with rejected drafts, and recent history.
+`⌘⇧A` on a post opens the panel: eight angles, tone, length, language, context checks,
+draft refinement, regenerate with rejected drafts, and recent history.
 
 ## Install (2 minutes)
 
@@ -96,7 +117,7 @@ specificity and cliché checks, regenerate with rejected drafts, and recent hist
 - **Reply to a comment** → **✦** in that reply box → it answers the commenter.
 - **Open a DM** → **✦** in the message toolbar → it answers the last message.
 - **Send a connection request** → **Add a note** → **✦** → a 300-character note in your voice.
-- **⌘⇧A** opens the panel for angles, tone, length and the quality score.
+- **⌘⇧A** opens the panel for angles, tone, length, refinement and context checks.
 
 ## Safety and privacy
 
@@ -105,6 +126,11 @@ specificity and cliché checks, regenerate with rejected drafts, and recent hist
 - Hourly and daily caps, minimum gap between actions, and a pause when the platform shows a warning.
 - No analytics, no account, no backend. Only your chosen AI provider receives the request.
 - Export/import settings and voices as JSON; API keys are excluded on purpose.
+- Existing drafts survive generation errors or cancellation. Replacement offers review and Undo.
+- Limits count automatic send attempts and observed manual sends of assisted drafts; unknown delivery is labelled clearly. They do not guarantee account protection.
+- In Settings → Voice, try your voice on a sample post and explicitly save your edited reply as a writing sample.
+- The panel offers Shorter, More direct, Less polished and Keep my wording, with context-based wording checks rather than a quality score.
+- Custom provider hosts request optional access through **Test connection** or **Load models / Refresh models**.
 
 ## Documentation
 

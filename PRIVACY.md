@@ -1,6 +1,6 @@
 # Privacy policy
 
-Last updated: 14 November 2026
+Last updated: 15 November 2026
 
 SocialMe is a browser extension that writes social media replies using an AI model that **you**
 choose and pay for. It is local-first: there is no SocialMe server, no account, and no analytics.
@@ -14,17 +14,19 @@ Stored in `chrome.storage.local` and never synced:
 | Your API key(s) | To call the provider you selected |
 | Settings, brand notes, personas | To write in your voice |
 | Recent drafts and usage counters | History and account-safety limits |
+| Saved conversations, notes, follow-up dates and session progress | Your local engagement assistant; nothing is sent automatically |
+| Approved writing feedback and examples | Only saved when you explicitly approve them; used in future model requests |
+| Approved source → reply pairs | Save only when you approve the source excerpt and reply together; message pairs are used only for message replies |
 | A per-tab diagnostics record | So a broken selector can be diagnosed |
 
-You can delete all of it at any time: *Settings → Data → Clear history*, or by removing the
-extension (which deletes its storage).
+Settings → Data → Clear history deletes draft history. Removing the extension deletes all its storage.
 
 ## What leaves your device
 
 Only requests to the AI provider **you configured**. A request contains:
 
 - the post or direct-message text you are replying to,
-- your persona/brand notes and the tone/instruction you chose for this reply,
+- your persona/brand notes, selected approved examples (including source → reply pairs), feedback, and the rough thought or tone/instruction you chose for this reply,
 - your API key, as the authentication header.
 
 Nothing else. There is no telemetry, no crash reporting, no remote configuration, and no SocialMe
@@ -46,7 +48,8 @@ you had typed it yourself.
 | Host access to `linkedin.com`, `x.com`, `facebook.com` | Show the ✦ icon and read the post you are replying to |
 | Host access to provider API domains (`api.openai.com`, `api.deepseek.com`, `api.anthropic.com`, `generativelanguage.googleapis.com`, `openrouter.ai`, `localhost`) | Make the model request you initiated |
 
-We do not request `tabs`, `history`, `cookies`, or `<all_urls>`.
+We do not request `tabs`, `history`, or `cookies`. A custom provider can request optional access
+to its specific HTTP/HTTPS host when you click Test connection or Load models / Refresh models.
 
 ## Data we never collect
 

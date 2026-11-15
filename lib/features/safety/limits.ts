@@ -6,30 +6,37 @@ const DAY = 24 * 3600 * 1000;
 const HOUR = 3600 * 1000;
 const KEEP = 7 * DAY;
 
-let cache: ActivityEvent[] | null = null;
-
 async function readAll(): Promise<ActivityEvent[]> {
-  if (cache) return cache;
   const result = await browser.storage.local.get(STORAGE_KEYS.activity);
   const raw = (result[STORAGE_KEYS.activity] as ActivityEvent[] | undefined) ?? [];
   const cutoff = Date.now() - KEEP;
-  cache = raw.filter((event) => event && event.ts > cutoff);
-  return cache;
+  return raw.filter((event) => event && event.ts > cutoff);
 }
 
 export async function recordActivity(
   platform: PlatformId,
   kind: ActivityEvent['kind'],
+  id?: string,
 ): Promise<void> {
   const events = await readAll();
-  events.push({ ts: Date.now(), platform, kind });
+  if (id && events.some((event) => event.id === id)) return;
+  events.push({ ts: Date.now(), platform, kind, id });
   const cutoff = Date.now() - KEEP;
-  cache = events.filter((event) => event.ts > cutoff);
-  await browser.storage.local.set({ [STORAGE_KEYS.activity]: cache });
+  await browser.storage.local.set({ [STORAGE_KEYS.activity]: events.filter((event) => event.ts > cutoff) });
 }
 
 export async function getActivity(): Promise<ActivityEvent[]> {
   return [...(await readAll())];
+}
+
+/** Called only by the background's serialized submission service. */
+export async function markConfirmed(id: string): Promise<PlatformId | null> {
+  const events = await readAll();
+  const event = events.find((item) => item.id === id && item.kind === 'submit');
+  if (!event || event.confirmed) return null;
+  event.confirmed = true;
+  await browser.storage.local.set({ [STORAGE_KEYS.activity]: events });
+  return event.platform;
 }
 
 export interface Allowance {

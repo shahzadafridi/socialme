@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { getAdapter } from '@/lib/integrations/index';
 import { startWarningWatch } from '@/lib/features/safety/watch';
+import { installSubmissionWatch } from '@/lib/features/safety/submissions';
+import { getAssistantState, watchAssistant } from '@/lib/features/assistant/store';
 import { collectDiagnostics } from '@/lib/features/diagnostics';
 import { getSettings, watchSettings } from '@/lib/data/storage';
 import { installComposerButtons } from '@/lib/ui/composer/index';
@@ -44,7 +46,9 @@ function mount(): void {
     return;
   }
 
-  const settingsRef = { composer: true };
+  const settingsRef = { composer: true, paused: false };
+  void getAssistantState().then((state) => { settingsRef.paused = Boolean(state.paused[adapter.id]); }).catch(() => undefined);
+  watchAssistant((state) => { settingsRef.paused = Boolean(state.paused[adapter.id]); });
   const syncInline = () => {
     getSettings()
       .then((settings) => {
@@ -65,7 +69,8 @@ function mount(): void {
   };
 
   step('warningWatch', () => startWarningWatch());
-  step('composerButtons', () => installComposerButtons(adapter, () => settingsRef.composer));
+  step('submissionWatch', () => installSubmissionWatch(adapter));
+  step('composerButtons', () => installComposerButtons(adapter, () => settingsRef.composer && !settingsRef.paused));
 
   window.setTimeout(() => void collectDiagnostics(adapter, boot), 2500);
   window.setInterval(() => void collectDiagnostics(adapter, boot), 30000);

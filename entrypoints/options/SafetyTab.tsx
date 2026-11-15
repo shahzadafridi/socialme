@@ -54,9 +54,9 @@ export function SafetyTab({
       <div>
         <h1>Safety &amp; reach</h1>
         <p className="lede">
-          A restricted account has no reach, so these limits matter more than output settings. SocialMe
-          enforces them before anything is typed or sent, and it types like a person instead of pasting
-          instantly.
+          Local limits apply across tabs before automatic sending. Attempts count even when delivery
+          is unconfirmed. Manual sends of assisted drafts are observed where the send control can be
+          identified; manual sending is never blocked. These controls do not guarantee account protection.
         </p>
       </div>
 
@@ -278,7 +278,7 @@ export function SafetyTab({
           {PLATFORM_OPTIONS.map((platform) => (
             <div className="usage__item" key={platform.id}>
               <span className="usage__num">{usage?.submitted[platform.id] ?? 0}</span>
-              sent on {PLATFORMS[platform.id].label}
+              send actions observed on {PLATFORMS[platform.id].label}
             </div>
           ))}
           <div className="usage__item">

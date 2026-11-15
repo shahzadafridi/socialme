@@ -1,10 +1,8 @@
 import { browser } from 'wxt/browser';
 import {
-  clearEditor,
-  freshestEditor,
+  editorText,
   insertIntoEditor,
   looksInserted,
-  placeCaretAtEnd,
 } from '@/lib/integrations/insert';
 import { contextLimit } from '@/lib/integrations/messaging';
 import { readCommentBeingRepliedTo, type PlatformAdapter } from '@/lib/integrations/adapter';
@@ -17,6 +15,8 @@ import type { Mode } from '@/lib/ui/composer/types';
 import { type Entry, setState, styleButton } from '@/lib/ui/composer/button';
 import { insertButton, isUsableButton, needsReplacing } from '@/lib/ui/composer/placement';
 import { openToneMenu } from '@/lib/ui/composer/menu';
+import { offerUndo, reviewReplacement } from '@/lib/ui/composer/review';
+import { trackManualDraft } from '@/lib/features/safety/submissions';
 
 const BUTTON_CLASS = 'socialme-quick';
 
@@ -25,24 +25,6 @@ const CHANNEL_OF: Record<Mode, Channel> = {
   dm: 'dm',
   note: 'note',
 };
-
-function appendDelta(editor: HTMLElement, delta: string): void {
-  if (!delta) return;
-  editor.focus();
-  placeCaretAtEnd(editor);
-  let ok = false;
-  try {
-    ok = document.execCommand('insertText', false, delta);
-  } catch {
-    ok = false;
-  }
-  if (!ok) {
-    editor.appendChild(document.createTextNode(delta));
-    editor.dispatchEvent(
-      new InputEvent('input', { bubbles: true, data: delta, inputType: 'insertText' }),
-    );
-  }
-}
 
 /**
  * LinkedIn rejects an invitation note over 300 characters and its textarea refuses
@@ -56,26 +38,55 @@ function fitNote(text: string): string {
   return (space > NOTE_LIMIT * 0.75 ? cut.slice(0, space) : cut).trimEnd();
 }
 
-async function finish(
+export async function applyComposerDraft(
   entry: Entry,
   text: string,
   settings: Settings,
   adapter: PlatformAdapter,
   postText: string,
+  previous: string,
+  personaId: string,
+  signal: AbortSignal,
+  isCurrentContext: () => boolean = () => true,
 ): Promise<void> {
+  if (signal.aborted) return;
   const clean = entry.mode === 'note' ? fitNote(text.trim()) : text.trim();
-  entry.busy = false;
-  entry.port = null;
   if (!clean) {
     setState(entry, 'error', 'The model returned nothing');
     return;
   }
 
-  if (!looksInserted(entry.editor, clean)) {
-    const target = freshestEditor(entry.editor);
-    clearEditor(target);
+  await saveLastDraft(clean);
+  if (settings.historyEnabled) {
+    await addHistory({
+      platform: adapter.id,
+      channel: CHANNEL_OF[entry.mode],
+      personaId,
+      angle: settings.defaults.angle,
+      postExcerpt: postText,
+      draft: clean,
+      submitted: false,
+    });
+  }
+  const target = entry.editor;
+  if (!target.isConnected || signal.aborted) return;
+  if (!isCurrentContext()) {
+    setState(entry, 'error', 'The conversation changed. Generated reply saved locally; open SocialMe again.');
+    return;
+  }
+  const current = editorText(target);
+  if (current.trim() || current !== previous) {
+    const replace = await reviewReplacement(entry.button, clean, signal);
+    if (signal.aborted || !target.isConnected) return;
+    if (!replace) { setState(entry, 'idle'); return; }
+    if (editorText(target) !== current || !isCurrentContext()) {
+      setState(entry, 'error', 'Your draft changed again. Kept your text; generated draft saved locally.');
+      return;
+    }
+  }
+  if (!looksInserted(target, clean)) {
     const typed = settings.safety.humanTyping
-      ? await typeLikeHuman(target, clean, settings.safety.typingSpeed)
+      ? await typeLikeHuman(target, clean, settings.safety.typingSpeed, signal)
       : await insertIntoEditor(target, clean);
     if (!typed) {
       setState(entry, 'error', 'The editor rejected the text');
@@ -83,21 +94,14 @@ async function finish(
     }
     // Frameworks sometimes replay their own empty state right after our write.
     await new Promise((resolve) => setTimeout(resolve, 200));
-    if (!looksInserted(target, clean)) await insertIntoEditor(freshestEditor(target), clean);
+    if (!looksInserted(target, clean)) {
+      setState(entry, 'error', 'The editor changed. Generated draft saved; review the box before retrying.');
+      return;
+    }
   }
 
-  await saveLastDraft(clean);
-  if (settings.historyEnabled) {
-    void addHistory({
-      platform: adapter.id,
-      channel: CHANNEL_OF[entry.mode],
-      personaId: resolvePersona(settings, adapter.id).id,
-      angle: settings.defaults.angle,
-      postExcerpt: postText,
-      draft: clean,
-      submitted: false,
-    });
-  }
+  offerUndo(target, current, clean);
+  trackManualDraft(target, adapter.id);
   setState(entry, 'done');
 }
 
@@ -112,6 +116,7 @@ export function installComposerButtons(
   const remove = (editor: HTMLElement) => {
     const entry = entries.get(editor);
     if (!entry) return;
+    entry.controller?.abort();
     try {
       entry.port?.postMessage({ type: 'cancel' });
       entry.port?.disconnect();
@@ -173,20 +178,16 @@ export function installComposerButtons(
       event.stopPropagation();
 
       if (entry.busy) {
-        entry.port?.postMessage({ type: 'cancel' });
+        entry.controller?.abort();
+        entry.port?.disconnect();
+        entry.port = null;
+        entry.busy = false;
+        setState(entry, 'idle');
         return;
       }
 
       const settings = await getSettings();
       const platformPersona = resolvePersona(settings, adapter.id);
-      const choice = await openToneMenu(entry, {
-        personas: settings.personas,
-        personaId: platformPersona.id,
-        tone: resolveTone(settings, adapter.id),
-      });
-      if (!choice) return;
-      const tone = choice.tone === 'Default' ? undefined : choice.tone;
-      const persona = resolvePersona(settings, adapter.id, choice.personaId);
       const channel = CHANNEL_OF[mode];
 
       let context: { author: string; text: string; meta?: string } | null = null;
@@ -224,12 +225,49 @@ export function installComposerButtons(
         excerpt = replyingTo?.text ?? context.text;
       }
 
-      if (!(editor instanceof HTMLTextAreaElement)) clearEditor(editor);
+      const sourceStillCurrent = () => {
+        if (!editor.isConnected || !isEnabled()) return false;
+        if (mode === 'dm') {
+          const current = adapter.readConversation(editor, contextLimit(settings.dmContext));
+          return current?.author === context?.author && current?.text === context?.text;
+        }
+        if (mode === 'note') {
+          const current = adapter.readNoteRecipient?.(editor);
+          return current?.name === recipient?.name && current?.headline === recipient?.headline;
+        }
+        const root = adapter.postForEditor(editor);
+        const current = root ? adapter.readPost(root) : null;
+        const reply = readCommentBeingRepliedTo(editor);
+        return current?.author === context?.author && current?.text === context?.text
+          && reply?.text === replyingTo?.text && reply?.author === replyingTo?.author;
+      };
+      const choice = await openToneMenu(entry, {
+        personas: settings.personas,
+        personaId: platformPersona.id,
+        tone: resolveTone(settings, adapter.id),
+        draft: editorText(editor),
+        exampleContext: { platform: adapter.id, channel, source: replyingTo?.text || context?.text || [recipient?.name, recipient?.headline].filter(Boolean).join('\n') },
+        context: mode === 'note'
+          ? [recipient?.name, recipient?.headline].filter(Boolean).join('\n')
+          : [context?.author, context?.text.slice(0, mode === 'dm' ? 3000 : 6000),
+            replyingTo ? `Answering ${replyingTo.author || 'this comment'}: ${replyingTo.text.slice(0, 2000)}` : ''].filter(Boolean).join('\n\n'),
+      });
+      if (!choice || !editor.isConnected || !isEnabled()) return;
+      if (!sourceStillCurrent()) {
+        setState(entry, 'error', 'The conversation changed. Open SocialMe again for the new context.');
+        return;
+      }
+      const tone = choice.tone === 'Default' ? undefined : choice.tone;
+      const persona = resolvePersona(settings, adapter.id, choice.personaId);
+      const previous = editorText(editor);
+      const generationController = new AbortController();
+      entry.controller = generationController;
       entry.text = '';
       entry.busy = true;
       setState(entry, 'busy');
 
       const request: GenerateRequest = {
+        roughThought: choice.roughThought,
         platform: adapter.id,
         channel,
         post: context
@@ -257,26 +295,34 @@ export function installComposerButtons(
       }
       entry.port = port;
 
-      // Textarea composers (X chat, invite notes) are framework-owned: stream into
-      // our own buffer and write once, so a single input event carries the draft.
-      const buffered = editor instanceof HTMLTextAreaElement;
+      let completed = false;
+      const fail = (message: string) => {
+        if (entry.port !== port) return;
+        entry.port = null;
+        entry.busy = false;
+        port.disconnect();
+        setState(entry, 'error', message);
+      };
 
       port.onMessage.addListener((message: PortMessage) => {
+        if (entry.port !== port || entry.controller?.signal.aborted) return;
         if (message.type === 'delta') {
           entry.text += message.text;
-          if (!buffered) appendDelta(editor, message.text);
         } else if (message.type === 'done') {
-          void finish(entry, message.text, settings, adapter, excerpt);
+          completed = true;
+          port.disconnect();
+          void applyComposerDraft(entry, message.text, settings, adapter, excerpt, previous, persona.id, generationController.signal, sourceStillCurrent)
+            .catch((error) => { if (!generationController.signal.aborted) setState(entry, 'error', error.message); })
+            .finally(() => {
+              if (entry.port === port) { entry.busy = false; entry.port = null; }
+            });
         } else if (message.type === 'error') {
-          entry.busy = false;
-          entry.port = null;
-          if (message.code === 'aborted') setState(entry, 'idle');
-          else setState(entry, 'error', message.error);
+          fail(message.error);
         }
       });
 
       port.onDisconnect.addListener(() => {
-        if (entry.busy && entry.text) void finish(entry, entry.text, settings, adapter, excerpt);
+        if (!completed) fail('Generation interrupted. Your original draft is unchanged.');
       });
 
       port.postMessage({ type: 'start', request });
@@ -287,7 +333,11 @@ export function installComposerButtons(
   };
 
   const scan = () => {
-    if (stopped || !isEnabled()) return;
+    if (stopped) return;
+    if (!isEnabled()) {
+      for (const editor of [...entries.keys()]) remove(editor);
+      return;
+    }
     let commentEditors: HTMLElement[] = [];
     let messageEditors: HTMLElement[] = [];
     let noteEditors: HTMLElement[] = [];

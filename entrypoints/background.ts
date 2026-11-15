@@ -2,6 +2,8 @@ import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import { AiError, streamCompletion } from '@/lib/core/ai/providers';
 import { buildPrompt } from '@/lib/core/ai/prompt';
+import { loadWritingVoice } from '@/lib/data/voice';
+import { getAssistantState, updateAssistant } from '@/lib/features/assistant/store';
 import {
   getApiKey,
   getSettings,
@@ -10,12 +12,18 @@ import {
   resolvePersona,
 } from '@/lib/data/storage';
 import type { GenerateRequest, PortMessage } from '@/lib/core/types';
+import { handleSubmissionMessage } from '@/lib/features/safety/service';
 
 export const MAX_REQUEST_CHARS = 12_000;
 
 function sanitize(request: GenerateRequest): GenerateRequest {
   return {
     ...request,
+    roughThought: typeof request.roughThought === 'string' ? request.roughThought.trim().slice(0, 1200) : undefined,
+    revision: request.revision ? {
+      text: String(request.revision.text ?? '').slice(0, 4000),
+      instruction: String(request.revision.instruction ?? '').slice(0, 500),
+    } : undefined,
     post: request.post
       ? { ...request.post, text: (request.post.text ?? '').slice(0, MAX_REQUEST_CHARS) }
       : undefined,
@@ -38,6 +46,14 @@ export default defineBackground(() => {
   });
 
   browser.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
+    if (message?.type === 'socialme:assistant') {
+      void updateAssistant(message.action).then((state) => sendResponse({ state })).catch((error) => sendResponse({ error: error.message }));
+      return true;
+    }
+    if (['socialme:reserve-submit', 'socialme:observe-submit', 'socialme:confirm-submit'].includes(message?.type)) {
+      void handleSubmissionMessage(message).then(sendResponse).catch((error) => sendResponse({ error: error.message }));
+      return true;
+    }
     // Callback style, not a returned promise: older Chrome ignores a promise returned from an
     // onMessage listener and hands the sender `undefined`, while sendResponse works everywhere.
     if (message?.type === 'socialme:open-options') {
@@ -83,15 +99,16 @@ export default defineBackground(() => {
       try {
         const request = sanitize(raw.request as GenerateRequest);
         const settings = await getSettings();
+        if ((await getAssistantState()).paused[request.platform]) throw new AiError('SocialMe is paused on this platform. Resume it before generating.', 'paused');
         const provider =
           settings.providers.find((p) => p.id === settings.activeProvider) ??
           settings.providers[0];
 
         const apiKey = await getApiKey(provider.id);
-        const persona = resolvePersona(settings, request.platform, request.personaId);
+        const voice = await loadWritingVoice(settings, resolvePersona(settings, request.platform, request.personaId));
         const prompt = buildPrompt({
           request,
-          persona,
+          ...voice,
           platform: request.platform,
           brand: settings.brand,
         });
@@ -101,14 +118,15 @@ export default defineBackground(() => {
           system: prompt.system,
           user: prompt.user,
           maxTokens: prompt.maxTokens,
-          temperature: prompt.temperature,
+          temperature: provider.temperature,
           signal,
         })) {
-          if (signal.aborted) break;
+          if (signal.aborted) throw new AiError('Cancelled.', 'aborted');
           full += delta;
           send({ type: 'delta', text: delta });
         }
 
+        if (signal.aborted) throw new AiError('Cancelled.', 'aborted');
         const cleaned = full.trim();
         if (!cleaned) {
           throw new AiError('The model returned an empty response. Try again.', 'empty');
@@ -117,6 +135,7 @@ export default defineBackground(() => {
         void recordUsage(request.platform, 'generate');
         send({ type: 'done', text: cleaned });
       } catch (error) {
+        if (controller?.signal !== signal || closed) return;
         const err = error as AiError;
         if (err?.code === 'aborted') {
           send({ type: 'error', error: 'Cancelled.', code: 'aborted' });

@@ -1,5 +1,5 @@
 import type { TypingSpeed } from '@/lib/core/types';
-import { actualEditable, insertIntoEditor, looksInserted } from '@/lib/integrations/insert';
+import { actualEditable, editorText, insertIntoEditor, looksInserted } from '@/lib/integrations/insert';
 import { sleep } from '@/lib/shared/dom';
 
 interface TypingProfile {
@@ -65,7 +65,9 @@ export async function typeLikeHuman(
   editor: HTMLElement,
   text: string,
   speed: TypingSpeed = 'natural',
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  signal?.throwIfAborted();
   if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
     return insertIntoEditor(editor, text);
   }
@@ -73,13 +75,20 @@ export async function typeLikeHuman(
 
   const target = actualEditable(editor);
   const profile = PROFILES[speed] ?? PROFILES.natural;
+  const previous = editorText(target);
   target.focus();
   await sleep(Math.round(rand(profile.startDelay[0], profile.startDelay[1])));
+  signal?.throwIfAborted();
+  const ownsFocus = () => (target.getRootNode() as Document | ShadowRoot).activeElement === target;
+  if (!target.isConnected || !ownsFocus() || editorText(target) !== previous) return false;
   clearEditor(target);
 
   let index = 0;
   let guard = 0;
   while (index < text.length && guard < 4000) {
+    signal?.throwIfAborted();
+    if (!target.isConnected || !ownsFocus()) return false;
+    if (index > 0 && !looksInserted(target, text.slice(0, index))) return false;
     guard += 1;
     const size = pickChunk(text, index, profile);
     const chunk = text.slice(index, index + size);

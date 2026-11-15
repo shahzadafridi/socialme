@@ -7,7 +7,14 @@ import { deliverDraft, autoDelay } from '@/lib/features/deliver';
 import type { PlatformAdapter } from '@/lib/integrations/adapter';
 import { checkAllowance, formatWait } from '@/lib/features/safety/limits';
 import { dismissWarning, subscribeWarning } from '@/lib/features/safety/watch';
-import { addHistory, getHistory, getUsage, recordUsage, saveLastDraft } from '@/lib/data/storage';
+import { getWarning } from '@/lib/features/safety/watch';
+import { reserveSubmit, confirmSubmit } from '@/lib/features/safety/service';
+import { editorText } from '@/lib/integrations/insert';
+import { offerUndo } from '@/lib/ui/composer/review';
+import { VoiceFeedback } from '@/lib/ui/VoiceFeedback';
+import { ConversationAssistant } from '@/lib/ui/ConversationAssistant';
+import { assistantAction } from '@/lib/features/assistant/store';
+import { addHistory, getHistory, getUsage, saveLastDraft } from '@/lib/data/storage';
 import type {
   Angle,
   GenerateRequest,
@@ -72,10 +79,12 @@ export function Panel({
   const [length, setLength] = useState<Length>(settings.defaults.replyLength);
   const [language, setLanguage] = useState('auto');
   const [extra, setExtra] = useState(settings.defaults.extraInstruction || '');
+  const [roughThought, setRoughThought] = useState('');
 
   const [draft, setDraft] = useState('');
   const [rejected, setRejected] = useState<string[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [delivering, setDelivering] = useState(false);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [status, setStatus] = useState<Status>(null);
   const [expanded, setExpanded] = useState(false);
@@ -86,6 +95,9 @@ export function Panel({
   const [warning, setWarning] = useState<string | null>(null);
 
   const portRef = useRef<any>(null);
+  const generationEpoch = useRef(0);
+  const deliveryRef = useRef<AbortController | null>(null);
+  const priorDraft = useRef('');
   const performRef = useRef<((submit: boolean) => Promise<void>) | null>(null);
   const submitRef = useRef<(() => void) | null>(null);
   const modeRef = useRef<OutputMode>('review');
@@ -110,8 +122,12 @@ export function Panel({
   );
 
   const report = useMemo(
-    () => (draft.trim() ? analyzeDraft(draft, platform, limit) : null),
-    [draft, platform, limit],
+    () => (draft.trim() ? analyzeDraft(draft, platform, limit, {
+      source: post?.text,
+      notes: [settings.evidence, persona.role, persona.niche, extra, roughThought].filter(Boolean).join('\n'),
+      recentDrafts: history.map((item) => item.draft),
+    }) : null),
+    [draft, platform, limit, post?.text, settings.evidence, persona.role, persona.niche, extra, roughThought, history],
   );
 
   useEffect(() => {
@@ -140,6 +156,8 @@ export function Panel({
   useEffect(() => {
     const unsubscribe = subscribeWarning(setWarning);
     return () => {
+      generationEpoch.current += 1;
+      deliveryRef.current?.abort();
       unsubscribe();
     };
   }, []);
@@ -162,17 +180,20 @@ export function Panel({
   }, []);
 
   const stop = useCallback(() => {
+    generationEpoch.current += 1;
     try {
-      portRef.current?.postMessage({ type: 'cancel' });
+      portRef.current?.disconnect();
+      portRef.current = null;
     } catch {
       // ignore
     }
     setStreaming(false);
+    setDraft(priorDraft.current);
   }, []);
 
   const generate = useCallback(
-    (isRegenerate = false) => {
-      if (streaming) return;
+    (isRegenerate = false, revision?: string) => {
+      if (streaming || portRef.current || deliveryRef.current) return;
       if (!post) {
         setStatus({ text: 'Open a post first — SocialMe replies to posts and comments.', tone: 'warn' });
         return;
@@ -184,10 +205,13 @@ export function Panel({
 
       setError(null);
       setStatus(null);
-      setDraft('');
+      priorDraft.current = draft;
+      const epoch = ++generationEpoch.current;
       setStreaming(true);
 
       const request: GenerateRequest = {
+        roughThought: revision ? undefined : roughThought.trim() || undefined,
+        revision: revision && draft.trim() ? { text: draft.trim(), instruction: revision } : undefined,
         platform,
         channel: 'comment',
         post: { author: post.author, authorHeadline: post.authorHeadline, text: post.text, meta: post.meta },
@@ -209,19 +233,24 @@ export function Panel({
         return;
       }
       portRef.current = port;
+      let received = '';
 
       port.onMessage.addListener((message: PortMessage) => {
+        if (portRef.current !== port || generationEpoch.current !== epoch) return;
         if (message.type === 'delta') {
-          setDraft((prev) => prev + message.text);
+          received += message.text;
+          setDraft(received);
         } else if (message.type === 'done') {
           setDraft(message.text.trim());
           setStreaming(false);
+          portRef.current = null;
           try {
             port.disconnect();
           } catch {
             // ignore
           }
           window.setTimeout(() => {
+            if (generationEpoch.current !== epoch || revision) return;
             const active = modeRef.current;
             if (active === 'insert') {
               void performRef.current?.(false);
@@ -236,6 +265,8 @@ export function Panel({
           }, 400);
         } else if (message.type === 'error') {
           setStreaming(false);
+          setDraft(priorDraft.current);
+          portRef.current = null;
           if (message.code !== 'aborted') {
             setError({ message: message.error, code: message.code });
           }
@@ -248,23 +279,35 @@ export function Panel({
       });
 
       port.onDisconnect.addListener(() => {
+        if (portRef.current !== port) return;
         setStreaming(false);
         portRef.current = null;
+        setDraft(priorDraft.current);
+        setError({ message: 'Generation interrupted. Your previous draft is preserved.', code: 'port' });
       });
 
       port.postMessage({ type: 'start', request });
     },
-    [angle, draft, extra, language, length, persona.id, platform, post, rejected, streaming, tone],
+    [angle, draft, extra, roughThought, language, length, persona.id, platform, post, rejected, streaming, tone, settings.autoSubmit.enabled],
   );
 
   const resolveEditor = useCallback(async (): Promise<HTMLElement | null> => {
-    return postEl ? adapter.openReplyEditor(postEl) : null;
-  }, [adapter, postEl]);
+    if (!postEl?.isConnected) return null;
+    const current = adapter.readPost(postEl);
+    return current?.text === post?.text && current?.author === post?.author ? adapter.openReplyEditor(postEl) : null;
+  }, [adapter, postEl, post]);
 
   const perform = useCallback(
     async (submit: boolean) => {
       const text = draft.trim();
-      if (!text) return;
+      if (!text || deliveryRef.current) return;
+      if (submit && text.length > limit) {
+        setStatus({ text: 'Shorten the draft to the character limit before sending.', tone: 'warn' });
+        return;
+      }
+      const controller = new AbortController();
+      deliveryRef.current = controller;
+      setDelivering(true);
       setConfirming(false);
       setError(null);
       setStatus({
@@ -280,6 +323,7 @@ export function Panel({
 
       try {
         const editor = await resolveEditor();
+        controller.signal.throwIfAborted();
         if (!editor) {
           const copied = await copyText(text);
           setStatus({
@@ -292,12 +336,24 @@ export function Panel({
           return;
         }
 
+        const previous = editorText(editor);
+        if (previous.trim() && previous.trim() !== text && !window.confirm('Replace the text already in this editor? You can undo the replacement.')) return;
+        let submissionId: string | undefined;
         const result = await deliverDraft(adapter, {
           editor,
           text,
           submit,
           humanTyping: settings.safety.humanTyping,
           typingSpeed: settings.safety.typingSpeed,
+          signal: controller.signal,
+          beforeSubmit: async () => {
+            const current = postEl?.isConnected ? adapter.readPost(postEl) : null;
+            if (current?.text !== post?.text || current?.author !== post?.author) throw new Error('The source post changed. Review before sending.');
+            if (getWarning() && settings.safety.pauseOnWarning) throw new Error('Account warning detected. Sending paused.');
+            const slot = await reserveSubmit(platform);
+            if (!slot.allowance.allowed || !slot.id) throw new Error(slot.allowance.reason || 'Sending limit reached.');
+            submissionId = slot.id;
+          },
           delayMs: submit
             ? autoDelay(settings.autoSubmit.minDelayMs, settings.autoSubmit.maxDelayMs)
             : 0,
@@ -307,6 +363,7 @@ export function Panel({
           setStatus({ text: result.reason ?? 'Insert failed.', tone: 'warn' });
           return;
         }
+        if (!result.attempted) offerUndo(editor, previous, text);
 
         void saveLastDraft(text);
         if (settings.historyEnabled) {
@@ -322,9 +379,9 @@ export function Panel({
         }
 
         if (submit && result.submitted) {
-          void recordUsage(platform, 'submit');
-          setStatus({ text: 'Sent. Check the page to confirm.', tone: 'ok' });
-          onToast('Sent');
+          if (submissionId) await confirmSubmit(submissionId);
+          setStatus({ text: 'The comment box cleared. Check the conversation for delivery.', tone: 'ok' });
+          onToast('Send action observed');
           refreshUsage();
         } else if (submit) {
           setStatus({ text: result.reason ?? 'Inserted — press the send button yourself.', tone: 'warn' });
@@ -333,17 +390,22 @@ export function Panel({
           onToast('Inserted into the editor');
         }
       } catch (err) {
-        setStatus({ text: (err as Error).message || 'Something went wrong.', tone: 'warn' });
+        if (!controller.signal.aborted) setStatus({ text: (err as Error).message || 'Something went wrong.', tone: 'warn' });
+      } finally {
+        if (deliveryRef.current === controller) deliveryRef.current = null;
+        if (!controller.signal.aborted) setDelivering(false);
       }
     },
     [
       adapter,
       angle,
       draft,
+      limit,
       extra,
       persona.id,
       platform,
       post,
+      postEl,
       refreshUsage,
       resolveEditor,
       settings.autoSubmit.maxDelayMs,
@@ -351,11 +413,13 @@ export function Panel({
       settings.historyEnabled,
       settings.safety.humanTyping,
       settings.safety.typingSpeed,
+      settings.safety.pauseOnWarning,
       onToast,
     ],
   );
 
   const requestSubmit = useCallback(async () => {
+    if (!settings.autoSubmit.enabled || deliveryRef.current) return;
     if (warning && settings.safety.pauseOnWarning) {
       setStatus({
         text: 'The page is showing an account warning. Resolve it before posting again.',
@@ -384,6 +448,7 @@ export function Panel({
     perform,
     platform,
     settings.autoSubmit.requireConfirm,
+    settings.autoSubmit.enabled,
     settings.safety,
     warning,
   ]);
@@ -401,7 +466,7 @@ export function Panel({
     onToast(ok ? 'Copied' : 'Copy failed');
   }, [draft, onToast]);
 
-  const describeAction = 'Generate reply';
+  const describeAction = roughThought.trim() ? 'Generate from my thought' : 'Generate reply';
   const canAuto = settings.autoSubmit.enabled;
   const sourceText = post?.text?.trim() ?? '';
 
@@ -419,6 +484,7 @@ export function Panel({
             </div>
           </div>
           <div className="ap-head__spacer" />
+          <button className="ap-btn ap-btn--ghost" title="Pause SocialMe on this platform" onClick={() => { void assistantAction({ kind: 'pause', platform, paused: true }).catch((error) => onToast(error.message)); }}>Pause</button>
           <button className="ap-iconbtn" title="Settings" onClick={openOptionsPage}>
             <Icon name="gear" size={14} />
           </button>
@@ -431,6 +497,7 @@ export function Panel({
           <div className="ap-mode">
             <Icon name="spark" size={11} /> Comment reply
           </div>
+          {post ? <ConversationAssistant post={post} persona={persona} topics={settings.topics} onAngle={setAngle} /> : null}
 
           {warning ? (
             <div className="ap-warnbox">
@@ -499,6 +566,14 @@ export function Panel({
               ))}
             </select>
           </div>
+
+          <label style={{ display: 'block' }}>
+            <span className="ap-label">My rough thought (optional)</span>
+            <textarea className="ap-textarea" rows={2} maxLength={1200} value={roughThought} disabled={streaming || delivering}
+              placeholder="e.g. Agree, but migration costs matter. Keep my point, just help me say it."
+              onChange={(event) => { generationEpoch.current += 1; setRoughThought(event.target.value); }} />
+            <span className="ap-hint">Your opinion sets the meaning. Used for this reply only; saved as an example only if you approve it.</span>
+          </label>
 
           <div>
             <div className="ap-label">
@@ -605,22 +680,6 @@ export function Panel({
                   <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>
                     generating…
                   </span>
-                ) : report ? (
-                  <span
-                    style={{
-                      textTransform: 'none',
-                      letterSpacing: 0,
-                      fontWeight: 600,
-                      color:
-                        report.verdict === 'good'
-                          ? 'var(--ap-good)'
-                          : report.verdict === 'ok'
-                            ? 'var(--ap-warn)'
-                            : 'var(--ap-bad)',
-                    }}
-                  >
-                    {report.verdict === 'good' ? 'strong' : report.verdict === 'ok' ? 'ok' : 'weak'}
-                  </span>
                 ) : null}
               </div>
 
@@ -643,11 +702,15 @@ export function Panel({
 
               {report ? (
                 <>
-                  <div className="ap-score">
-                    <div className="ap-score__bar">
-                      <div className="ap-score__fill" style={{ width: `${report.score}%` }} />
-                    </div>
-                    <span className="ap-score__label">{report.score}/100</span>
+                  <div className="ap-quality" aria-label="Refine draft">
+                    {[
+                      ['Shorter', 'Make it noticeably shorter. Keep the main point.'],
+                      ['More direct', 'Use direct, plain wording. Remove hedging and filler.'],
+                      ['Less polished', 'Make this conversational and natural, like a quick thoughtful reply. No forced slang.'],
+                      ['Keep my wording', 'Make only minimal grammar and clarity edits. Preserve my vocabulary and sentence structure.'],
+                    ].map(([label, instruction]) => (
+                      <button key={label} className="ap-btn ap-btn--ghost" disabled={streaming || delivering} onClick={() => generate(false, instruction)}>{label}</button>
+                    ))}
                   </div>
                   <div className="ap-quality">
                     {report.overLimit ? <span className="ap-q" data-tone="bad">too long</span> : null}
@@ -657,17 +720,13 @@ export function Panel({
                         cliché: {report.cliches[0]}
                       </span>
                     ) : null}
-                    {report.hasNumber ? <span className="ap-q" data-tone="good">specific</span> : null}
-                    {report.hasQuestion ? (
-                      <span className="ap-q" data-tone="good">asks something</span>
-                    ) : null}
-                    {report.words >= 12 ? (
-                      <span className="ap-q" data-tone="good">{report.words} words</span>
-                    ) : null}
-                    {!report.hasNumber && !report.hasQuestion && report.cliches.length === 0 ? (
-                      <span className="ap-q">add a detail to stand out</span>
-                    ) : null}
+                    {report.unsupportedNumbers.length ? <span className="ap-q" data-tone="warn">Check numbers: {report.unsupportedNumbers.join(', ')}</span> : null}
+                    {report.personalClaim ? <span className="ap-q" data-tone="warn">Review personal claim</span> : null}
+                    {report.repeatsSource ? <span className="ap-q" data-tone="warn">Repeats source wording</span> : null}
+                    {report.duplicate ? <span className="ap-q" data-tone="warn">Similar to a recent draft</span> : null}
                   </div>
+                  <div className="ap-hint">Checks compare wording with your context; review facts yourself.</div>
+                  <VoiceFeedback key={persona.id} personaId={persona.id} personaName={persona.name} draft={draft} source={post?.text} platform={platform} channel="comment" disabled={streaming || delivering} onRewrite={(instruction) => generate(false, instruction)} />
                 </>
               ) : null}
             </div>
@@ -707,7 +766,7 @@ export function Panel({
                 <button className="ap-btn" onClick={() => setConfirming(false)}>
                   Cancel
                 </button>
-                <button className="ap-btn ap-btn--primary" onClick={() => void perform(true)}>
+                <button className="ap-btn ap-btn--primary" disabled={delivering} onClick={() => void perform(true)}>
                   Send
                 </button>
               </span>
@@ -729,7 +788,7 @@ export function Panel({
             <button
               className="ap-btn ap-btn--primary ap-btn--wide"
               onClick={() => generate(Boolean(draft.trim()))}
-              disabled={!post}
+              disabled={!post || delivering}
               title={!post ? 'Select a post first' : undefined}
             >
               <Icon name="spark" size={14} />
@@ -745,7 +804,7 @@ export function Panel({
             <button
               className="ap-btn"
               onClick={copyDraft}
-              disabled={!draft.trim() || streaming}
+              disabled={!draft.trim() || streaming || delivering}
               title="Copy the draft"
             >
               <Icon name="copy" size={13} />
@@ -754,7 +813,7 @@ export function Panel({
             <button
               className="ap-btn"
               onClick={() => void perform(false)}
-              disabled={!draft.trim() || streaming}
+              disabled={!draft.trim() || streaming || delivering}
               title="Insert into the editor, keep it for review"
             >
               Insert
@@ -763,7 +822,7 @@ export function Panel({
               <button
                 className={`ap-btn ${settings.outputMode === 'auto' ? 'ap-btn--primary' : 'ap-btn--auto'}`}
                 onClick={() => void requestSubmit()}
-                disabled={!draft.trim() || streaming || Boolean(warning && settings.safety.pauseOnWarning)}
+                disabled={!draft.trim() || streaming || delivering || Boolean(warning && settings.safety.pauseOnWarning)}
                 title={
                   warning && settings.safety.pauseOnWarning
                     ? 'Resolve the account warning first'
@@ -786,7 +845,7 @@ export function Panel({
             </button>
             {canAuto ? (
               <span className="ap-hint" style={{ fontSize: 10.5 }}>
-                {submittedToday}/{settings.safety.maxActionsPerDay || '∞'} sent today
+                {submittedToday} send actions today · limits also count unconfirmed attempts
               </span>
             ) : null}
           </div>

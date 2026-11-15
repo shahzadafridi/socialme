@@ -10,6 +10,7 @@ export interface Entry {
   /** Row that owned the icon when it was last placed, to catch re-render drift. */
   placedParent?: HTMLElement | null;
   resetTimer?: number;
+  controller?: AbortController;
 }
 
 

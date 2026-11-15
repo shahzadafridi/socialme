@@ -6,15 +6,17 @@ const normalize = (value: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+export function editorText(editor: HTMLElement): string {
+  return editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement
+    ? editor.value
+    : editor.innerText || editor.textContent || '';
+}
+
 /** Compare what we asked for with what the editor actually holds. */
 export function looksInserted(editor: HTMLElement, expected: string): boolean {
-  const actual = normalize(editor.innerText || editor.textContent || '');
+  const actual = normalize(editorText(editor));
   const want = normalize(expected);
-  if (!actual) return false;
-  if (want.length < 12) return actual.includes(want);
-  const head = want.slice(0, Math.min(28, want.length));
-  const tail = want.slice(-Math.min(14, want.length));
-  return actual.includes(head) && actual.includes(tail);
+  return Boolean(actual) && actual === want;
 }
 
 function selectAllContent(editor: HTMLElement): void {
@@ -69,7 +71,7 @@ export function actualEditable(editor: HTMLElement): HTMLElement {
  */
 async function insertViaBeforeInput(editor: HTMLElement, text: string): Promise<boolean> {
   editor.focus();
-  placeCaretAtEnd(editor);
+  selectAllContent(editor);
   try {
     const before = new InputEvent('beforeinput', {
       inputType: 'insertText',
@@ -124,7 +126,7 @@ async function insertIntoInput(
   el: HTMLInputElement | HTMLTextAreaElement,
   text: string,
 ): Promise<boolean> {
-  const landed = () => el.value.includes(normalize(text).slice(0, 20));
+  const landed = () => normalize(el.value) === normalize(text);
 
   el.focus();
 

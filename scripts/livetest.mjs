@@ -337,6 +337,14 @@ try {
        row.click();
        return true;`,
     );
+    await sleep(150);
+    await uiEval(
+      session,
+      `const g = document.querySelector('.socialme-tone-generate');
+       if (!g) return false;
+       g.click();
+       return true;`,
+    );
     await sleep(250);
   };
 
@@ -396,10 +404,44 @@ try {
       );
       expect(anchored.display !== 'none', 'button hidden');
 
+      const commentLayout = await uiEval(
+        session,
+        `const b = document.querySelector('.socialme-quick');
+         return {
+           inToolbar: Boolean(b.closest('.comment-toolbar')),
+           inActionRow: Boolean(b.closest('.row')),
+           parent: b.parentElement ? Array.from(b.parentElement.classList).join(' ') : '',
+         };`,
+      );
+      if (platform === 'linkedin' || platform === 'facebook') {
+        expect(
+          commentLayout.inToolbar,
+          `comment icon not in the media toolbar (${commentLayout.parent})`,
+        );
+      }
+      expect(!commentLayout.inActionRow, 'comment icon fell into the post action row');
+
       await evaluate(
         session,
         `document.querySelector('.socialme-quick').click(); true`,
       );
+      await waitFor(session, `return Boolean(document.querySelector('.socialme-tone-menu'));`, {
+        timeout: 8000,
+        label: 'tone menu',
+      });
+      const menu = await uiEval(
+        session,
+        `const v = document.querySelector('.socialme-voice-select');
+         return {
+           voices: v ? v.options.length : 0,
+           tones: document.querySelectorAll('.socialme-tone-chip').length,
+           generate: Boolean(document.querySelector('.socialme-tone-generate')),
+         };`,
+      );
+      expect(menu.voices >= 8, `voice selector had ${menu.voices} options`);
+      expect(menu.tones >= 8, `tone chips ${menu.tones}`);
+      expect(menu.generate, 'generate button missing');
+
       await chooseTone(session, 'Friendly', 'mention the 3-week launch');
 
       const text = await waitFor(
@@ -438,6 +480,48 @@ try {
       timeout: 12000,
       label: 'inbox icon',
     });
+    const layout = await uiEval(
+      dmSession,
+      `const b = document.querySelector('.socialme-quick');
+       const group = b.parentElement;
+       const row = group ? group.parentElement : null;
+       const siblings = Array.from((row ?? group).querySelectorAll('button')).filter((n) => n !== b);
+       const icons = Array.from(group.querySelectorAll('button')).filter(
+         (n) => n !== b && !/^(send|more)\b/i.test(n.getAttribute('aria-label') || ''),
+       );
+       const send = siblings.find((n) => /^send\b/i.test(n.getAttribute('aria-label') || '')) || null;
+       const br = b.getBoundingClientRect();
+       const last = icons[icons.length - 1];
+       const lr = last ? last.getBoundingClientRect() : null;
+       return {
+         w: Math.round(br.width),
+         h: Math.round(br.height),
+         icon: lr ? Math.round(Math.min(lr.width, lr.height)) : null,
+         afterLast: last
+           ? Array.from(group.querySelectorAll('button')).indexOf(b) >
+             Array.from(group.querySelectorAll('button')).indexOf(last)
+           : false,
+         beforeSend:
+           send && group
+             ? send.getBoundingClientRect().left >= group.getBoundingClientRect().right - 1
+             : false,
+         parent: group ? Array.from(group.classList).join(' ') : '',
+       };`,
+    );
+    expect(Math.abs(layout.w - layout.h) <= 1, `icon is not square (${layout.w}x${layout.h})`);
+    expect(
+      layout.icon !== null && Math.abs(layout.w - layout.icon) <= 2,
+      `icon is ${layout.w}px but siblings are ${layout.icon}px`,
+    );
+    expect(
+      layout.afterLast,
+      `icon is not the last icon in the row (${JSON.stringify(layout)})`,
+    );
+    expect(
+      layout.parent.includes('actions'),
+      `icon is not inside the icon group (parent "${layout.parent}")`,
+    );
+
     await realClick(dmSession, '.socialme-quick');
     await chooseTone(dmSession, 'Default');
 
@@ -479,6 +563,17 @@ try {
       label: 'quick button',
     });
     await evaluate(replySession, `document.querySelector('#comment-sam .socialme-quick').click(); true`);
+    await waitFor(replySession, `return Boolean(document.querySelector('.socialme-tone-menu'));`, {
+      timeout: 8000,
+      label: 'tone menu',
+    });
+    await uiEval(
+      replySession,
+      `const v = document.querySelector('.socialme-voice-select');
+       v.value = 'p_architect';
+       v.dispatchEvent(new Event('change', { bubbles: true }));
+       return true;`,
+    );
     await chooseTone(replySession, 'Default');
 
     await waitFor(
@@ -494,6 +589,10 @@ try {
     expect(
       prompt.includes('was that cycle time or review time'),
       'the comment text is missing from the prompt',
+    );
+    expect(
+      prompt.includes('principal-level engineering practitioner'),
+      'the voice chosen in the menu did not reach the prompt',
     );
     return 'comment context reached the prompt';
   });

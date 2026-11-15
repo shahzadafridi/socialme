@@ -11,10 +11,11 @@ import { readCommentBeingRepliedTo, type PlatformAdapter } from '@/lib/integrati
 import { typeLikeHuman } from '@/lib/features/safety/humanize';
 import { NOTE_LIMIT } from '@/lib/core/constants';
 import { addHistory, getSettings, resolvePersona, saveLastDraft } from '@/lib/data/storage';
+import { resolveTone } from '@/lib/core/defaults';
 import type { Channel, GenerateRequest, PortMessage, Settings } from '@/lib/core/types';
 import type { Mode } from '@/lib/ui/composer/types';
 import { type Entry, setState, styleButton } from '@/lib/ui/composer/button';
-import { insertButton } from '@/lib/ui/composer/placement';
+import { insertButton, isUsableButton } from '@/lib/ui/composer/placement';
 import { openToneMenu } from '@/lib/ui/composer/menu';
 
 const BUTTON_CLASS = 'socialme-quick';
@@ -153,12 +154,12 @@ export function installComposerButtons(
       true,
     );
     button.addEventListener('mouseenter', () => {
-      button.style.background = 'rgba(124,108,255,0.12)';
-      button.style.color = '#5b4bdb';
+      // Neutral hover: a coloured badge made the icon read as a different
+      // control next to Facebook's outline icons.
+      button.style.background = 'rgba(0,0,0,0.06)';
     });
     button.addEventListener('mouseleave', () => {
       button.style.background = '';
-      button.style.color = '';
     });
 
     button.addEventListener('click', async (event) => {
@@ -170,11 +171,16 @@ export function installComposerButtons(
         return;
       }
 
-      const choice = await openToneMenu(entry);
+      const settings = await getSettings();
+      const platformPersona = resolvePersona(settings, adapter.id);
+      const choice = await openToneMenu(entry, {
+        personas: settings.personas,
+        personaId: platformPersona.id,
+        tone: resolveTone(settings, adapter.id),
+      });
       if (!choice) return;
       const tone = choice.tone === 'Default' ? undefined : choice.tone;
-
-      const settings = await getSettings();
+      const persona = resolvePersona(settings, adapter.id, choice.personaId);
       const channel = CHANNEL_OF[mode];
 
       let context: { author: string; text: string; meta?: string } | null = null;
@@ -212,8 +218,6 @@ export function installComposerButtons(
         excerpt = replyingTo?.text ?? context.text;
       }
 
-      const persona = resolvePersona(settings, adapter.id);
-
       if (!(editor instanceof HTMLTextAreaElement)) clearEditor(editor);
       entry.text = '';
       entry.busy = true;
@@ -229,7 +233,7 @@ export function installComposerButtons(
         recipient,
         personaId: persona.id,
         angle: settings.defaults.angle,
-        tone: tone ?? (settings.defaults.tone || undefined),
+        tone,
         length: persona.length ?? settings.defaults.replyLength,
         language: persona.language,
         extra:
@@ -306,8 +310,14 @@ export function installComposerButtons(
         remove(editor);
         continue;
       }
-      // The platform may re-render the toolbar; put the icon back.
-      if (!entry.button.isConnected) insertButton(entry);
+      // The platform may re-render the toolbar, or a row may hide the icon.
+      // Put it back, and remount when the current spot is no longer usable.
+      if (!entry.button.isConnected) {
+        insertButton(entry);
+      } else if (!isUsableButton(entry.button)) {
+        entry.button.remove();
+        insertButton(entry);
+      }
     }
   };
 

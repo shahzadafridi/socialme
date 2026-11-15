@@ -48,7 +48,9 @@ const LINKEDIN = `<!doctype html><html><head><meta charset="utf-8"><title>Feed |
  .row{display:flex;align-items:center;gap:10px;border-top:1px solid #eee;padding-top:8px}
  .row button{border:0;background:transparent;font:inherit;color:#555;cursor:pointer;padding:4px 8px}
  .counts{color:#666;font-size:12px}
- .comment-box{display:flex;gap:8px;margin-top:10px}
+ .comment-box{display:flex;gap:8px;margin-top:10px;align-items:flex-start;flex-wrap:wrap}
+ .comment-toolbar{display:flex;gap:6px;margin-left:auto;align-items:center}
+ .comment-toolbar button{border:0;background:transparent;width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer}
  .editor{flex:1;min-height:38px;border:1px solid #ccc;border-radius:18px;padding:8px 12px;outline:none}
  .send{border:0;background:#0a66c2;color:#fff;border-radius:16px;padding:8px 14px;cursor:pointer}
  .comment{padding:10px 0 0;border-top:1px solid #eee;margin-top:10px}
@@ -168,7 +170,19 @@ function openComment(btn) {
   send.setAttribute('aria-label', 'Comment');
   send.textContent = 'Comment';
   send.onclick = () => { submitText(ed, 'linkedin'); box.remove(); };
-  box.append(ed, send);
+  const toolbar = document.createElement('div');
+  toolbar.className = 'comment-toolbar';
+  for (const [label, glyph] of [
+    ['Open emoji keyboard', '😊'],
+    ['Add a GIF', 'GIF'],
+    ['Add an image', '🖼'],
+  ]) {
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', label);
+    button.textContent = glyph;
+    toolbar.appendChild(button);
+  }
+  box.append(ed, toolbar, send);
   post.querySelector('.comments').appendChild(box);
   ed.focus();
 }
@@ -252,9 +266,11 @@ const FACEBOOK = `<!doctype html><html><head><meta charset="utf-8"><title>Facebo
  .actions{display:flex;gap:8px;border-top:1px solid #e4e6eb;padding-top:6px}
  .actions [role=button]{padding:6px 10px;color:#65676b;cursor:pointer;border-radius:6px}
  .actions [role=button]:hover{background:#f0f2f5}
- form{display:flex;gap:8px;margin-top:10px;align-items:flex-start}
+ form{display:flex;gap:8px;margin-top:10px;align-items:flex-start;flex-wrap:wrap}
  form [role=textbox]{flex:1;min-height:34px;border:1px solid #ccd0d5;border-radius:18px;padding:8px 12px;outline:none}
- form [role=button]{background:#1877f2;color:#fff;border-radius:16px;padding:8px 14px;cursor:pointer}
+ .comment-toolbar{display:flex;gap:6px;align-items:center;margin-left:auto}
+ .comment-toolbar [role=button]{width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:transparent;color:#65676b}
+ form [role=button].send{background:#1877f2;color:#fff;border-radius:16px;padding:8px 14px;cursor:pointer}
 </style></head><body>
 <div class="feed">
   <div role="article">
@@ -305,9 +321,24 @@ function openComment(btn) {
   send.setAttribute('role', 'button');
   send.setAttribute('aria-label', 'Comment');
   send.setAttribute('tabindex', '0');
+  send.className = 'send';
   send.textContent = 'Comment';
   send.onclick = () => { submitText(ed, 'facebook'); form.remove(); };
-  form.append(ed, send);
+  const toolbar = document.createElement('div');
+  toolbar.className = 'comment-toolbar';
+  for (const [label, glyph] of [
+    ['Choose an emoji', '😊'],
+    ['Attach a photo', '📷'],
+    ['Add a GIF', 'GIF'],
+    ['Choose a sticker', '🩹'],
+  ]) {
+    const button = document.createElement('div');
+    button.setAttribute('role', 'button');
+    button.setAttribute('aria-label', label);
+    button.textContent = glyph;
+    toolbar.appendChild(button);
+  }
+  form.append(ed, toolbar, send);
   post.querySelector('.comments').appendChild(form);
   ed.focus();
 }
@@ -324,9 +355,10 @@ const LINKEDIN_DM = `<!doctype html><html><head><meta charset="utf-8"><title>Mes
  .me{align-self:flex-end;background:#e7f3ff}
  .composer{border-top:1px solid #eee;padding:10px 12px}
  [contenteditable]{min-height:56px;border:1px solid #ddd;border-radius:8px;padding:10px;font-size:13px;outline:none}
- .row{display:flex;gap:10px;margin-top:8px;align-items:center}
- .row button{border:0;background:transparent;font-size:16px;cursor:pointer}
- .send{margin-left:auto;background:#1d64d8;color:#fff;border-radius:16px;padding:6px 16px}
+ .row{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+ .actions,.right{display:flex;align-items:center;gap:6px}
+ .row button{border:0;background:transparent;font-size:16px;cursor:pointer;width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%}
+ .send{width:auto;height:auto;background:#1d64d8;color:#fff;border-radius:16px;padding:6px 16px}
 </style></head><body>
 <aside>Noman Nazir<br>Fatima<br>Mohammad Soleymani Far</aside>
 <section>
@@ -340,9 +372,14 @@ const LINKEDIN_DM = `<!doctype html><html><head><meta charset="utf-8"><title>Mes
   <div class="composer">
     <div contenteditable="true" role="textbox" aria-label="Write a message…"></div>
     <div class="row">
-      <button aria-label="Open Emoji Keyboard">😊</button>
-      <button aria-label="Attach an image">🖼</button>
-      <button class="send" aria-label="Send">Send</button>
+      <div class="actions">
+        <button aria-label="Open Emoji Keyboard">😊</button>
+        <button aria-label="Attach an image">🖼</button>
+      </div>
+      <div class="right">
+        <button class="send" aria-label="Send">Send</button>
+        <button aria-label="More actions">…</button>
+      </div>
     </div>
   </div>
 </section>

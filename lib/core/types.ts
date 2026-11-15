@@ -146,6 +146,8 @@ export interface Settings {
   activePersonaId: string;
   /** Per-platform persona override, 'inherit' uses activePersonaId. */
   platformPersona: Record<PlatformId, string>;
+  /** Per-platform tone override, 'inherit' uses defaults.tone. */
+  platformTone: Record<PlatformId, string | 'inherit'>;
   defaults: Defaults;
   /** Which built-in persona seed generation the stored voices came from. */
   personaSeedVersion: number;
@@ -187,6 +189,7 @@ export interface PublicSettings {
   personas: Persona[];
   activePersonaId: string;
   platformPersona: Record<PlatformId, string>;
+  platformTone: Record<PlatformId, string | 'inherit'>;
   defaults: Defaults;
   outputMode: OutputMode;
   platformOutputMode: Record<PlatformId, OutputMode | 'inherit'>;

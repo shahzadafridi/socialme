@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { readDiagnostics, type Diagnostics } from '@/lib/features/diagnostics';
 import { readHealth, type PlatformHealth } from '@/lib/ui/composer/health';
 import { exportAll, importAll, clearHistory, getHistory } from '@/lib/data/storage';
-import type { Settings } from '@/lib/core/types';
+import { PLATFORMS } from '@/lib/core/constants';
+import type { PlatformId, Settings } from '@/lib/core/types';
 import { Button, Card, Note } from '@/entrypoints/options/ui';
+
+const PLATFORM_IDS: PlatformId[] = ['linkedin', 'x', 'facebook'];
 
 export function DataTab({ onChange }: { onChange: (patch: Partial<Settings>) => void }) {
   const [historyCount, setHistoryCount] = useState(0);
@@ -118,53 +121,79 @@ export function DataTab({ onChange }: { onChange: (patch: Partial<Settings>) => 
 
       <Card
         title="Composer health"
-        desc="Live check of the reply boxes the extension can reach. If a platform redesigns, the surface turns red here first."
+        desc="The content script checks every comment, DM and connection-note surface while you browse. Each platform keeps its own snapshot, so this list always shows all three."
         right={
           <Button small variant="ghost" onClick={() => { refreshHealth(); refreshDiagnostics(); }}>
-            Check
+            Refresh
           </Button>
         }
       >
-        {Object.keys(health).length ? (
-          <div style={{ fontSize: 12, lineHeight: 1.7 }}>
-            {Object.values(health).map((item) => (
-              <div key={item.platform} style={{ marginBottom: 8 }}>
-                <div>
-                  <b>{item.platform}</b>{' '}
-                  <span style={{ color: item.ok ? 'var(--good)' : 'var(--bad)' }}>
-                    {item.ok ? 'all surfaces ok' : `${item.problems.length} problem${item.problems.length === 1 ? '' : 's'}`}
-                  </span>{' '}
-                  <span style={{ color: 'var(--muted)' }}>
-                    v{item.version} · {new Date(item.ts).toLocaleTimeString()}
-                  </span>
+        <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+          <div style={{ color: 'var(--muted)', marginBottom: 10 }}>
+            {PLATFORM_IDS.filter((id) => health[id]).length} of {PLATFORM_IDS.length} platforms checked
+          </div>
+          {PLATFORM_IDS.map((id) => {
+            const item = health[id];
+            const label = PLATFORMS[id].label;
+            return (
+              <div key={id} style={{ padding: '9px 0', borderTop: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <b>{label}</b>
+                  {item ? (
+                    <>
+                      <span style={{ color: item.ok ? 'var(--good)' : 'var(--bad)' }}>
+                        {item.ok
+                          ? 'all surfaces ok'
+                          : `${item.problems.length} problem${item.problems.length === 1 ? '' : 's'}`}
+                      </span>
+                      <span style={{ color: 'var(--muted)' }}>
+                        v{item.version} · {new Date(item.ts).toLocaleTimeString()}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--muted)' }}>not checked yet</span>
+                  )}
                 </div>
-                {item.surfaces.map((surface, index) => (
-                  <div
-                    key={`${surface.mode}-${index}`}
-                    style={{ color: surface.ok ? 'var(--muted)' : 'var(--bad)', fontFamily: 'var(--mono)', fontSize: 11.5 }}
-                  >
-                    {surface.ok ? 'ok ' : 'bad'} {surface.mode.padEnd(7)} {surface.editor} ·{' '}
-                    {surface.strategy} · submit={String(surface.submit)} · context={String(surface.context)}
+
+                {item ? (
+                  <>
+                    {item.surfaces.map((surface, index) => (
+                      <div
+                        key={`${surface.mode}-${index}`}
+                        style={{
+                          color: surface.ok ? 'var(--muted)' : 'var(--bad)',
+                          fontFamily: 'var(--mono)',
+                          fontSize: 11.5,
+                        }}
+                      >
+                        {surface.ok ? 'ok ' : 'bad'} {surface.mode.padEnd(8)} {surface.editor} ·{' '}
+                        {surface.strategy} · submit={String(surface.submit)} · context=
+                        {String(surface.context)} · {surface.button}
+                        {surface.buttonVisible ? '' : ' (hidden)'}
+                      </div>
+                    ))}
+                    {item.problems.map((problem) => (
+                      <div key={problem} style={{ color: 'var(--bad)', fontSize: 11.5 }}>
+                        {problem}
+                      </div>
+                    ))}
+                    <div style={{ color: 'var(--muted)', fontSize: 11 }}>{item.url}</div>
+                  </>
+                ) : (
+                  <div style={{ color: 'var(--muted)', fontSize: 11.5 }}>
+                    Open {label} and start a comment, DM or invite note. The check runs automatically
+                    and appears here.
                   </div>
-                ))}
-                {item.problems.map((problem) => (
-                  <div key={problem} style={{ color: 'var(--bad)', fontSize: 11.5 }}>
-                    {problem}
-                  </div>
-                ))}
-                <div style={{ color: 'var(--muted)', fontSize: 11 }}>{item.url}</div>
+                )}
               </div>
-            ))}
+            );
+          })}
+          <div style={{ marginTop: 10 }}>
             <Button small variant="ghost" onClick={copyReport}>
               Copy report
             </Button>
           </div>
-        ) : (
-          <div className="card__desc">
-            No health snapshot yet. Open LinkedIn, X or Facebook and wait a few seconds, then press
-            Check.
-          </div>
-        )}
+        </div>
       </Card>
 
       <Card
@@ -220,17 +249,27 @@ export function DataTab({ onChange }: { onChange: (patch: Partial<Settings>) => 
       </Card>
 
       <Card title="Shortcuts">
-        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.9 }}>
-          <div>
-            <span className="kbd">⌘</span> <span className="kbd">⇧</span> <span className="kbd">A</span>{' '}
-            — open or close the SocialMe panel on LinkedIn, X or Facebook
+        <div className="shortcut-list">
+          <div className="shortcut-row">
+            <span className="shortcut-keys">
+              <span className="kbd">⌘</span>
+              <span className="kbd">⇧</span>
+              <span className="kbd">A</span>
+            </span>
+            <span>Open or close the SocialMe panel on LinkedIn, X or Facebook</span>
           </div>
-          <div>
-            <span className="kbd">Esc</span> — close the panel
+          <div className="shortcut-row">
+            <span className="shortcut-keys">
+              <span className="kbd">Esc</span>
+            </span>
+            <span>Close the panel or the ✦ menu</span>
           </div>
-          <div>
-            <span className="kbd">⌘</span> <span className="kbd">↵</span> — send a reply once the
-            draft is in the editor
+          <div className="shortcut-row">
+            <span className="shortcut-keys">
+              <span className="kbd">⌘</span>
+              <span className="kbd">↵</span>
+            </span>
+            <span>Send a reply once the draft is in the editor</span>
           </div>
         </div>
       </Card>

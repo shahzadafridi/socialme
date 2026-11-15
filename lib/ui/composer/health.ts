@@ -18,6 +18,10 @@ export interface SurfaceHealth {
   submit: boolean;
   /** The post or thread above the box could be read. */
   context: boolean;
+  /** Where the inline ✦ actually landed (size, position, parent). */
+  button: string;
+  /** False when the button is missing, hidden, zero-sized or clipped away. */
+  buttonVisible: boolean;
   ok: boolean;
 }
 
@@ -42,6 +46,18 @@ function describeEditor(editor: HTMLElement): string {
   const root = editor.getRootNode();
   const shadow = root instanceof ShadowRoot ? ' (shadow)' : '';
   return `${tag}${id ? `[${id.slice(0, 40)}]` : ''}${shadow}`;
+}
+
+function describeQuickButton(): string {
+  const button = document.querySelector<HTMLElement>('.socialme-quick');
+  if (!button) return 'missing';
+  const rect = button.getBoundingClientRect();
+  const parent = button.parentElement;
+  const cls = String(parent?.className ?? '')
+    .split(/\s+/)
+    .slice(0, 2)
+    .join('.');
+  return `${Math.round(rect.width)}x${Math.round(rect.height)} @${Math.round(rect.left)},${Math.round(rect.top)} in ${parent?.tagName ?? '?'}${cls ? `.${cls}` : ''}`;
 }
 
 function submitNear(editor: HTMLElement): boolean {
@@ -88,6 +104,19 @@ function inspect(
     strategy,
     submit,
     context,
+    button: describeQuickButton(),
+    buttonVisible: (() => {
+      const button = document.querySelector<HTMLElement>('.socialme-quick');
+      if (!button || !button.isConnected) return false;
+      const style = getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        rect.width > 8 &&
+        rect.height > 8
+      );
+    })(),
     ok: (Boolean(toolbar) || editor.tagName === 'TEXTAREA') && context,
   };
 }
@@ -135,6 +164,7 @@ export function checkPlatformHealth(adapter: PlatformAdapter): PlatformHealth {
       problems.push(`${surface.mode}: ${subject} not readable`);
     }
     if (!surface.submit) problems.push(`${surface.mode}: send control not found`);
+    if (!surface.buttonVisible) problems.push(`${surface.mode}: ✦ button missing or hidden`);
   }
 
   return {

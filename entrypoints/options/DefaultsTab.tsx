@@ -72,28 +72,47 @@ export function DefaultsTab({
       </Card>
 
       <Card
-        title="Voice per platform"
-        desc="LinkedIn wants a different register than X. Point each platform at a persona, or inherit the default."
+        title="Voice and tone per platform"
+        desc="LinkedIn wants a different register than X. Point each platform at a voice and a tone, or inherit the defaults. The inline ✦ menu still lets you override both for one reply."
       >
         <div className="grid-3">
           {PLATFORM_OPTIONS.map((platform) => (
-            <Field key={platform.id} label={platform.label}>
-              <Select
-                value={settings.platformPersona[platform.id]}
-                onChange={(value) =>
-                  onChange({
-                    platformPersona: { ...settings.platformPersona, [platform.id]: value },
-                  })
-                }
-                options={[
-                  { value: 'inherit', label: `Default (${settings.personas.find((p) => p.id === settings.activePersonaId)?.name ?? '—'})` },
-                  ...settings.personas.map((persona) => ({
-                    value: persona.id,
-                    label: `${persona.emoji ? `${persona.emoji} ` : ''}${persona.name}`,
-                  })),
-                ]}
-              />
-            </Field>
+            <div key={platform.id} style={{ display: 'grid', gap: 10 }}>
+              <Field label={`${platform.label} voice`}>
+                <Select
+                  value={settings.platformPersona[platform.id]}
+                  onChange={(value) =>
+                    onChange({
+                      platformPersona: { ...settings.platformPersona, [platform.id]: value },
+                    })
+                  }
+                  options={[
+                    { value: 'inherit', label: `Default (${settings.personas.find((p) => p.id === settings.activePersonaId)?.name ?? '—'})` },
+                    ...settings.personas.map((persona) => ({
+                      value: persona.id,
+                      label: `${persona.emoji ? `${persona.emoji} ` : ''}${persona.name}`,
+                    })),
+                  ]}
+                />
+              </Field>
+              <Field label={`${platform.label} tone`}>
+                <Select
+                  value={settings.platformTone[platform.id]}
+                  onChange={(value) =>
+                    onChange({
+                      platformTone: { ...settings.platformTone, [platform.id]: value },
+                    })
+                  }
+                  options={[
+                    {
+                      value: 'inherit',
+                      label: `Default (${settings.defaults.tone || 'persona tone'})`,
+                    },
+                    ...TONES.map((tone) => ({ value: tone, label: tone })),
+                  ]}
+                />
+              </Field>
+            </div>
           ))}
         </div>
       </Card>

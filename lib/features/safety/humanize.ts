@@ -1,5 +1,5 @@
 import type { TypingSpeed } from '@/lib/core/types';
-import { insertIntoEditor, looksInserted } from '@/lib/integrations/insert';
+import { actualEditable, insertIntoEditor, looksInserted } from '@/lib/integrations/insert';
 import { sleep } from '@/lib/shared/dom';
 
 interface TypingProfile {
@@ -71,10 +71,11 @@ export async function typeLikeHuman(
   }
   if (!editor.isContentEditable && !editor.getAttribute('contenteditable')) return false;
 
+  const target = actualEditable(editor);
   const profile = PROFILES[speed] ?? PROFILES.natural;
-  editor.focus();
+  target.focus();
   await sleep(Math.round(rand(profile.startDelay[0], profile.startDelay[1])));
-  clearEditor(editor);
+  clearEditor(target);
 
   let index = 0;
   let guard = 0;
@@ -99,8 +100,10 @@ export async function typeLikeHuman(
     }
   }
 
-  if (index >= text.length && looksInserted(editor, text)) return true;
+  if (index >= text.length && looksInserted(target, text)) return true;
 
-  // Something rejected the simulated typing — fall back to the instant path.
+  // Something rejected the simulated typing — clear the partial text, then
+  // use the instant path (which handles Lexical via beforeinput).
+  clearEditor(target);
   return insertIntoEditor(editor, text);
 }

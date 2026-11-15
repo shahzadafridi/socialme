@@ -17,11 +17,19 @@ function labelOf(node: HTMLElement): string {
 
 const MEDIA_ICON = /emoji|gif|photo|image|attach|file|sticker|media/;
 
-const SUBMIT_LABEL = /^(send|comment|post|reply|share)$/i;
+/** Overflow menus belong in the composer, but not at the end of the icon row. */
+const OVERFLOW_ICON = /^(more|more actions|more options|open options|options|menu|overflow|settings)\b/i;
+
+function isOverflowControl(node: HTMLElement): boolean {
+  return OVERFLOW_ICON.test(labelOf(node)) || OVERFLOW_ICON.test((node.innerText ?? '').trim());
+}
 
 function isSubmitControl(node: HTMLElement): boolean {
-  const hay = `${node.getAttribute('aria-label') ?? ''} ${node.innerText ?? ''}`.trim();
-  return SUBMIT_LABEL.test(hay);
+  const label = (node.getAttribute('aria-label') ?? '').trim();
+  const text = (node.innerText ?? '').trim();
+  // "Send", "Send message", "Post comment" — but not a button that merely
+  // contains the word (e.g. a menu item called "Schedule send").
+  return /^(send|comment|post|reply|share)\b/i.test(label) || /^(send|comment|post|reply|share)$/i.test(text);
 }
 
 function iconsIn(root: ParentNode): HTMLElement[] {
@@ -29,7 +37,234 @@ function iconsIn(root: ParentNode): HTMLElement[] {
     root.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
   )
     .filter(isIconButton)
-    .filter((node) => !isSubmitControl(node));
+    .filter((node) => !isSubmitControl(node))
+    .filter((node) => !isOverflowControl(node));
+}
+
+/** Direct child of `row` that contains `node`, so the icon can sit beside it. */
+function childOfRow(row: HTMLElement, node: HTMLElement): HTMLElement | null {
+  let el: HTMLElement = node;
+  while (el.parentElement && el.parentElement !== row) el = el.parentElement;
+  return el.parentElement === row ? el : null;
+}
+
+/** Square size that matches the icons actually in the row. */
+function matchIconSize(nodes: HTMLElement[], fallback?: HTMLElement | null): number {
+  const sizes = nodes
+    .map((node) => node.getBoundingClientRect())
+    .filter((rect) => rect.width >= 16 && rect.height >= 16 && rect.width <= 48 && rect.height <= 48)
+    .map((rect) => Math.round(Math.min(rect.width, rect.height)))
+    .sort((a, b) => a - b);
+
+  if (sizes.length) {
+    return Math.max(22, Math.min(38, sizes[Math.floor(sizes.length / 2)]));
+  }
+
+  const rect = fallback?.getBoundingClientRect();
+  const base = rect ? Math.min(rect.width, rect.height) : 28;
+  return Math.max(24, Math.min(38, Math.round(base || 28)));
+}
+
+/** Is the injected button actually usable on screen? */
+export function isUsableButton(button: HTMLElement): boolean {
+  if (!button.isConnected) return false;
+  const style = getComputedStyle(button);
+  if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+    return false;
+  }
+  const rect = button.getBoundingClientRect();
+  return rect.width > 8 && rect.height > 8 && rect.right > 0 && rect.left < window.innerWidth;
+}
+
+/** Size the button and its glyph so it reads as one of the row's icons. */
+function sizeForRow(button: HTMLButtonElement, size: number): void {
+  // Facebook's toolbar icons are outline glyphs on a 30-32px hit area. A big
+  // 38px star with a coloured circle reads as a different kind of control.
+  const facebook = /(^|\.)facebook\.com$/.test(location.hostname);
+  const box = facebook ? Math.min(30, Math.max(24, size)) : size;
+
+  button.style.width = `${box}px`;
+  button.style.height = `${box}px`;
+  button.style.padding = '0';
+  button.style.margin = '0 2px';
+  button.style.borderRadius = '50%';
+  button.style.boxSizing = 'border-box';
+  button.style.flex = '0 0 auto';
+  button.style.alignSelf = 'center';
+  button.style.lineHeight = '0';
+
+  const glyph = facebook
+    ? Math.min(20, Math.max(15, Math.round(box * 0.64)))
+    : Math.min(22, Math.max(16, Math.round(size * 0.8)));
+  const svg = button.querySelector('svg');
+  if (svg) {
+    svg.setAttribute('width', String(glyph));
+    svg.setAttribute('height', String(glyph));
+    svg.style.width = `${glyph}px`;
+    svg.style.height = `${glyph}px`;
+    svg.style.display = 'block';
+    svg.style.flex = 'none';
+  }
+}
+
+/**
+ * The composer row that owns the Send/Comment/Reply control. This is the most
+ * reliable anchor: LinkedIn's messaging footer is a sibling of the editor, and
+ * the conversation header has its own icons that an emoji search can borrow.
+ */
+function rowFromSubmit(editor: HTMLElement): Toolbar | null {
+  const editorRect = visualRect(editor);
+  const submit = Array.from(
+    document.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
+  )
+    .filter((node) => isVisible(node) && isSubmitControl(node))
+    .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+    .filter(
+      ({ rect }) =>
+        rect.top >= editorRect.bottom - 12 &&
+        rect.top <= editorRect.bottom + 170 &&
+        rect.right > editorRect.left - 20 &&
+        rect.left < editorRect.right + 140,
+    )
+    .sort(
+      (a, b) =>
+        Math.abs(a.rect.top - editorRect.bottom) - Math.abs(b.rect.top - editorRect.bottom),
+    )[0]?.node;
+
+  if (!submit) return null;
+  const submitRect = submit.getBoundingClientRect();
+
+  // The icons usually sit in their own group to the left of Send. Find the
+  // right-most real icon in that band, so the ✦ lands at the end of the group
+  // rather than next to Send across the flexible gap.
+  const icons = Array.from(
+    document.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
+  )
+    .filter((node) => {
+      if (node === submit || !isVisible(node)) return false;
+      if (isSubmitControl(node) || isOverflowControl(node)) return false;
+      if (!isIconButton(node)) return false;
+      const rect = node.getBoundingClientRect();
+      const sameLine = Math.abs(
+        rect.top + rect.height / 2 - (submitRect.top + submitRect.height / 2),
+      ) < 28;
+      const toTheLeft = rect.right <= submitRect.left + 6;
+      const close = rect.left >= submitRect.left - 800;
+      return sameLine && toTheLeft && close;
+    })
+    .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+
+  if (icons.length) {
+    const anchor = icons[icons.length - 1];
+    let row = anchor.parentElement;
+    // Climb until the row groups at least two icons (LinkedIn wraps each one).
+    for (let depth = 0; row && depth < 4 && iconsIn(row).length < 2; depth += 1) {
+      row = row.parentElement;
+    }
+    if (row) return { row, anchor, strategy: 'near-editor' };
+  }
+
+  // The media/emoji control is the safest anchor when the icon buttons do not
+  // expose a usable role or size. Pick the one on the Send line, left of Send.
+  const emoji = Array.from(
+    document.querySelectorAll<HTMLElement>('[aria-label*="emoji" i], [title*="emoji" i]'),
+  )
+    .filter(isVisible)
+    .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+    .filter(
+      ({ rect }) =>
+        Math.abs(rect.top + rect.height / 2 - (submitRect.top + submitRect.height / 2)) < 30 &&
+        rect.right <= submitRect.left + 6 &&
+        rect.left >= submitRect.left - 420,
+    )
+    .sort((a, b) => b.rect.left - a.rect.left)[0]?.node;
+
+  if (emoji) {
+    let row = emoji.parentElement;
+    for (let depth = 0; row && depth < 4 && iconsIn(row).length < 2; depth += 1) {
+      row = row.parentElement;
+    }
+    if (row) return { row, anchor: emoji, strategy: 'near-editor' };
+  }
+
+  const row = submit.parentElement;
+  if (!row) return null;
+  return { row, anchor: submit, strategy: 'near-editor' };
+}
+
+/**
+ * The tight icon group around the anchor. Inserting after the group itself
+ * (rather than inside it) leaves the ✦ floating in the composer's flex gap.
+ */
+function groupAround(anchor: HTMLElement, editor: HTMLElement): Toolbar | null {
+  const editorRect = visualRect(editor);
+  const rect = anchor.getBoundingClientRect();
+  // Never borrow an icon far above the editor (conversation header, page chrome).
+  // A comment box's media toolbar can sit level with the editor's top edge.
+  if (rect.top < editorRect.top - 120) return null;
+  if (rect.top > editorRect.bottom + 240) return null;
+
+  const hasSubmit = (node: HTMLElement) =>
+    Array.from(
+      node.querySelectorAll<HTMLElement>('button, [role="button"], [aria-label]'),
+    ).some((control) => isVisible(control) && isSubmitControl(control));
+
+  let best: HTMLElement | null = null;
+  let node: HTMLElement | null = anchor.parentElement;
+
+  for (let depth = 0; node && depth < 6; depth += 1) {
+    const hasIcons = iconsIn(node).length >= 2;
+    if (hasIcons && !best) best = node;
+    // Stop at the footer/message row, but keep the tighter group found inside it.
+    if (hasSubmit(node)) {
+      if (!best && hasIcons) best = node;
+      break;
+    }
+    node = node.parentElement;
+  }
+
+  return best ? { row: best, anchor, strategy: 'near-editor' } : null;
+}
+
+/**
+ * Fallback: small icon controls just below the editor and aligned with it.
+ */
+function toolbarBelowEditor(editor: HTMLElement): Toolbar | null {
+  const editorRect = visualRect(editor);
+  if (editorRect.width === 0) return null;
+
+  const candidates = Array.from(
+    document.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
+  ).filter((node) => {
+    if (!isVisible(node)) return false;
+    if (isSubmitControl(node) || isOverflowControl(node)) return false;
+    if (!isIconButton(node)) return false;
+    const rect = node.getBoundingClientRect();
+    const below = rect.top >= editorRect.bottom - 6 && rect.top <= editorRect.bottom + 130;
+    const aligned = rect.right > editorRect.left - 40 && rect.left < editorRect.right + 40;
+    return below && aligned;
+  });
+
+  if (!candidates.length) return null;
+
+  const groups = new Map<HTMLElement, HTMLElement[]>();
+  for (const node of candidates) {
+    const row = node.parentElement;
+    if (!row) continue;
+    const list = groups.get(row) ?? [];
+    list.push(node);
+    groups.set(row, list);
+  }
+
+  let best: { row: HTMLElement; icons: HTMLElement[] } | null = null;
+  for (const [row, icons] of groups) {
+    if (!best || icons.length > best.icons.length) best = { row, icons };
+  }
+  if (!best) return null;
+
+  best.icons.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+  const anchor = best.icons[best.icons.length - 1];
+  return { row: best.row, anchor, strategy: 'near-editor' };
 }
 
 /** Nearest ancestor that owns the editor and its submit control. */
@@ -63,8 +298,19 @@ export interface Toolbar {
   strategy: 'emoji-row' | 'icon-row' | 'near-editor';
 }
 
+/**
+ * Some platforms put the contenteditable inside a zero-sized wrapper; measure the
+ * visible composer box instead so geometry looks at the right place on screen.
+ */
+function visualRect(el: HTMLElement): DOMRect {
+  const rect = el.getBoundingClientRect();
+  if (rect.width > 80 && rect.height > 16) return rect;
+  const parent = el.parentElement?.getBoundingClientRect();
+  return parent && parent.width > 80 && parent.height > 16 ? parent : rect;
+}
+
 export function findToolbar(editor: HTMLElement): Toolbar | null {
-  const editorRect = editor.getBoundingClientRect();
+  const editorRect = visualRect(editor);
   const editorDialog = editor.closest('[role="dialog"]');
   const scope = rootOf(editor);
   const emoji = deepQueryAll<HTMLElement>(
@@ -153,56 +399,95 @@ export function insertButton(entry: Entry): boolean {
     }
   }
 
-  const toolbar = findToolbar(entry.editor);
+  const found = findToolbar(entry.editor);
+  const grouped = found ? groupAround(found.anchor, entry.editor) : null;
+
+  const facebook = /(^|\.)facebook\.com$/.test(location.hostname);
+
+  // Facebook's comment composer lives in a modal (often with shadow content).
+  // Its media row is the reliable anchor; climbing to a submit ancestor can
+  // land in the page-level container, behind the modal.
+  const toolbar = facebook
+    ? found ?? toolbarBelowEditor(entry.editor) ?? grouped ?? rowFromSubmit(entry.editor)
+    : grouped ?? toolbarBelowEditor(entry.editor) ?? rowFromSubmit(entry.editor) ?? found;
   if (toolbar) {
     // One icon per toolbar, even if two editors map onto the same row.
     const taken = toolbar.row.querySelector<HTMLElement>('.socialme-quick');
     if (taken && taken !== entry.button) return false;
 
-    let wrapper: HTMLElement = toolbar.anchor;
-    while (wrapper.parentElement && wrapper.parentElement !== toolbar.row) {
-      wrapper = wrapper.parentElement;
-    }
-
-    // Square box so it reads as a circle, sized like the neighbouring icons.
-    const box = Math.min(
-      40,
-      Math.max(
-        24,
-        Math.round(Math.min(toolbar.anchor.offsetWidth || 24, toolbar.anchor.offsetHeight || 24)),
-      ),
+    const controls = Array.from(
+      toolbar.row.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
+    ).filter(isVisible);
+    const submit = controls.find(isSubmitControl) ?? null;
+    const icons = controls.filter(
+      (node) => node !== submit && !isOverflowControl(node) && isIconButton(node),
     );
-    entry.button.style.width = `${box}px`;
-    entry.button.style.height = `${box}px`;
-    entry.button.style.padding = '0';
-    entry.button.style.margin = '0';
-    entry.button.style.alignSelf = 'center';
-    entry.button.style.borderRadius = '50%';
-    entry.button.style.lineHeight = '0';
+    const anchor = icons[icons.length - 1] ?? toolbar.anchor;
+    const size = icons.length ? matchIconSize(icons, anchor) : 26;
+    sizeForRow(entry.button, size);
 
-    // If the right-most control is the send/submit action itself, land just
-    // before it; otherwise land after the last real icon.
-    const isSubmit = /^(send|comment|post|reply|share)\b/i.test(labelOf(toolbar.anchor));
-    if (isSubmit) wrapper.before(entry.button);
-    else if (toolbar.row.getAttribute('data-testid') === 'ScrollSnap-List') {
-      // X's toolbar is a horizontal scroller: anything appended inside it gets
-      // clipped. Sit just after the scroller so we stay on the same row.
+    // X's toolbar is a horizontal scroller: anything appended inside it gets
+    // clipped. Sit just after the scroller so we stay on the same row.
+    if (toolbar.row.getAttribute('data-testid') === 'ScrollSnap-List') {
       const scroller = toolbar.row.parentElement ?? toolbar.row;
       const host = scroller.parentElement ?? scroller;
       host.insertBefore(entry.button, scroller.nextSibling);
-    } else wrapper.after(entry.button);
+    } else {
+      // End of the icon group: immediately after the right-most real icon.
+      // When the icon already sits in a group (the common case), insert beside
+      // it so the group's own gap and padding apply; otherwise step out to the
+      // icon's wrapper inside the row. Only fall back to Send when no icon exists.
+      const submitWrapper = submit ? childOfRow(toolbar.row, submit) : null;
+      const anchorWrapper = childOfRow(toolbar.row, anchor);
+      if (anchor !== submit) {
+        // LinkedIn's footer is [icon group] [flexible gap] [Send group]. Insert
+        // beside the icon *inside* that group; inserting into the outer row
+        // parks the ✦ in the gap (the 0.7.0 regression). The live fixture locks
+        // this: the button's parent must be the icon group.
+        anchor.after(entry.button);
+        if (!entry.button.isConnected && anchorWrapper) anchorWrapper.after(entry.button);
+      } else if (submitWrapper) {
+        toolbar.row.insertBefore(entry.button, submitWrapper);
+      } else {
+        toolbar.row.appendChild(entry.button);
+      }
+    }
+
+    // Comment toolbars are right-aligned and have no room after the last icon;
+    // the ✦ would clip outside the editor. If that happens, keep it in the same
+    // icon group but move it to the start so it stays visible.
+    const editorBox = visualRect(entry.editor);
+    const placed = entry.button.getBoundingClientRect();
+    if (placed.width > 0 && icons.length >= 2 && placed.right > editorBox.right - 2) {
+      icons.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+      const first = icons[0];
+      const firstWrapper = childOfRow(toolbar.row, first);
+      if (firstWrapper) toolbar.row.insertBefore(entry.button, firstWrapper);
+      else first.parentElement?.insertBefore(entry.button, first);
+    }
 
     const align = () => {
       if (!entry.button.isConnected) return;
       entry.button.style.transform = 'none';
-      const anchorRect = toolbar.anchor.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
       const ours = entry.button.getBoundingClientRect();
       const delta = anchorRect.top + anchorRect.height / 2 - (ours.top + ours.height / 2);
       if (Number.isFinite(delta) && Math.abs(delta) > 0.5) {
         entry.button.style.transform = `translateY(${delta}px)`;
       }
     };
-    window.requestAnimationFrame(align);
+    window.requestAnimationFrame(() => {
+      align();
+      // Self-heal: if the row hid or clipped the button, put it next to the
+      // editor instead of leaving the composer without a ✦.
+      if (!isUsableButton(entry.button)) {
+        const parent = entry.editor.parentElement;
+        if (parent) {
+          sizeForRow(entry.button, 26);
+          parent.insertBefore(entry.button, entry.editor);
+        }
+      }
+    });
 
     return entry.button.isConnected;
   }
@@ -210,6 +495,7 @@ export function insertButton(entry: Entry): boolean {
   if (entry.mode === 'dm') {
     const parent = entry.editor.parentElement;
     if (!parent) return false;
+    sizeForRow(entry.button, 28);
     parent.insertBefore(entry.button, entry.editor);
     return entry.button.isConnected;
   }

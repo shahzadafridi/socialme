@@ -1,5 +1,5 @@
 import { PROVIDER_PRESETS } from '@/lib/core/constants';
-import type { Brand, Persona, ProviderId, SafetySettings, Settings } from '@/lib/core/types';
+import type { Brand, Persona, PlatformId, ProviderId, SafetySettings, Settings } from '@/lib/core/types';
 
 /** Bump when the built-in voices change so existing installs get the new seeds once. */
 export const PERSONA_SEED_VERSION = 2;
@@ -345,6 +345,11 @@ export function defaultSettings(): Settings {
       x: 'inherit',
       facebook: 'inherit',
     },
+    platformTone: {
+      linkedin: 'inherit',
+      x: 'inherit',
+      facebook: 'inherit',
+    },
     defaults: {
       angle: 'insight',
       tone: '',
@@ -409,8 +414,22 @@ export function mergeSettings(stored: unknown): Settings {
       extraInstruction: input.defaults?.extraInstruction ?? base.defaults.extraInstruction,
     },
     platformPersona: { ...base.platformPersona, ...(input.platformPersona ?? {}) },
+    platformTone: { ...base.platformTone, ...(input.platformTone ?? {}) },
     platformOutputMode: { ...base.platformOutputMode, ...(input.platformOutputMode ?? {}) },
     autoSubmit: { ...base.autoSubmit, ...(input.autoSubmit ?? {}) },
     safety: { ...base.safety, ...(input.safety ?? {}) },
   };
+}
+
+
+/** The tone a draft starts with: platform override, then the global default. */
+export function resolveTone(
+  input: {
+    defaults: { tone: string };
+    platformTone?: Partial<Record<PlatformId, string | 'inherit'>>;
+  },
+  platform: PlatformId,
+): string {
+  const per = input.platformTone?.[platform];
+  return per && per !== 'inherit' ? per : input.defaults.tone;
 }

@@ -51,6 +51,54 @@ export function freshestEditor(editor: HTMLElement): HTMLElement {
   return match ?? editor;
 }
 
+/**
+ * Facebook Messenger (Lexical) and similar editors often wrap the real editable
+ * in another contenteditable. Write to the innermost one, not the wrapper.
+ */
+export function actualEditable(editor: HTMLElement): HTMLElement {
+  if (!editor.matches('[contenteditable="true"]')) return editor;
+  const nested = Array.from(
+    editor.querySelectorAll<HTMLElement>('[contenteditable="true"]'),
+  ).filter(isVisible);
+  return nested.length ? nested[nested.length - 1] : editor;
+}
+
+/**
+ * Lexical/Facebook Messenger react to beforeinput, not to a raw DOM write.
+ * Dispatch the pair and verify; leave the caller to try the other strategies.
+ */
+async function insertViaBeforeInput(editor: HTMLElement, text: string): Promise<boolean> {
+  editor.focus();
+  placeCaretAtEnd(editor);
+  try {
+    const before = new InputEvent('beforeinput', {
+      inputType: 'insertText',
+      data: text,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    });
+    const proceed = editor.dispatchEvent(before);
+    // Lexical (Facebook Messenger) handles this event and renders on its next
+    // tick; give it a beat before deciding the write failed.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    if (looksInserted(editor, text)) return true;
+    if (!proceed) return looksInserted(editor, text);
+    editor.dispatchEvent(
+      new InputEvent('input', {
+        inputType: 'insertText',
+        data: text,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    return looksInserted(editor, text);
+  } catch {
+    return false;
+  }
+}
+
 /** Remove everything an editor currently holds, keeping its model in sync. */
 export function clearEditor(editor: HTMLElement): void {
   if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
@@ -174,36 +222,45 @@ function insertViaDom(editor: HTMLElement, text: string): boolean {
  */
 export async function insertIntoEditor(editor: HTMLElement, text: string): Promise<boolean> {
   if (!editor.isConnected) return false;
-  editor.focus();
+  const target = actualEditable(editor);
+  target.focus();
 
-  if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
-    return await insertIntoInput(editor, text);
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+    return await insertIntoInput(target, text);
   }
 
-  if (!editor.isContentEditable && !editor.getAttribute('contenteditable')) {
+  if (!target.isContentEditable && !target.getAttribute('contenteditable')) {
     return false;
   }
 
-  // 1. Native execCommand — lets Lexical / Draft.js / Quill update their models.
-  insertWithExecCommand(editor, text);
-  if (looksInserted(editor, text)) {
-    placeCaretAtEnd(editor);
+  const landed = () => looksInserted(target, text) || looksInserted(editor, text);
+
+  // 1. beforeinput — the path Lexical (Facebook Messenger) listens to.
+  if ((await insertViaBeforeInput(target, text)) && landed()) {
+    placeCaretAtEnd(target);
     return true;
   }
 
-  // 2. Line-by-line, for editors that swallow inline newlines.
-  if (text.includes('\n')) {
-    insertLineByLine(editor, text);
-    if (looksInserted(editor, text)) return true;
+  // 2. Native execCommand — lets Lexical / Draft.js / Quill update their models.
+  insertWithExecCommand(target, text);
+  if (landed()) {
+    placeCaretAtEnd(target);
+    return true;
   }
 
-  // 3. Synthetic paste.
-  insertViaPaste(editor, text);
-  if (looksInserted(editor, text)) return true;
+  // 3. Line-by-line, for editors that swallow inline newlines.
+  if (text.includes('\n')) {
+    insertLineByLine(target, text);
+    if (landed()) return true;
+  }
 
-  // 4. Direct DOM write. Works for simple contenteditables, may not sync rich editors.
-  insertViaDom(editor, text);
-  if (looksInserted(editor, text)) return true;
+  // 4. Synthetic paste.
+  insertViaPaste(target, text);
+  if (landed()) return true;
+
+  // 5. Direct DOM write. Works for simple contenteditables, may not sync rich editors.
+  insertViaDom(target, text);
+  if (landed()) return true;
 
   return false;
 }

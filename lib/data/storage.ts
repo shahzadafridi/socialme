@@ -141,6 +141,7 @@ export async function getPublicSettings(): Promise<PublicSettings> {
     personas: settings.personas,
     activePersonaId: settings.activePersonaId,
     platformPersona: settings.platformPersona,
+    platformTone: settings.platformTone,
     defaults: settings.defaults,
     outputMode: settings.outputMode,
     platformOutputMode: settings.platformOutputMode,

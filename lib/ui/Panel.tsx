@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { analyzeDraft } from '@/lib/core/ai/quality';
 import { ANGLES, LENGTHS, PLATFORMS, TONES } from '@/lib/core/constants';
+import { resolveTone } from '@/lib/core/defaults';
 import { deliverDraft, autoDelay } from '@/lib/features/deliver';
 import type { PlatformAdapter } from '@/lib/integrations/adapter';
 import { checkAllowance, formatWait } from '@/lib/features/safety/limits';
@@ -67,7 +68,7 @@ export function Panel({
 
   const [personaId, setPersonaId] = useState(initialPersona);
   const [angle, setAngle] = useState<Angle>(settings.defaults.angle);
-  const [tone, setTone] = useState(settings.defaults.tone || '');
+  const [tone, setTone] = useState(resolveTone(settings, platform));
   const [length, setLength] = useState<Length>(settings.defaults.replyLength);
   const [language, setLanguage] = useState('auto');
   const [extra, setExtra] = useState(settings.defaults.extraInstruction || '');

@@ -8,6 +8,7 @@ import { analyzeDraft } from '../lib/core/ai/quality.ts';
 import {
   mergeSettings,
   seedPersonas,
+  resolveTone,
   PERSONA_SEED_VERSION,
 } from '../lib/core/defaults.ts';
 
@@ -308,6 +309,7 @@ const storedLegacy = {
   activePersonaId: 'p_default',
   personas: legacyPersonas,
   platformPersona: { linkedin: 'p_custom', x: 'inherit', facebook: 'inherit' },
+  platformTone: { linkedin: 'Witty, dry humour', x: 'inherit', facebook: 'inherit' },
 };
 
 const migrated = mergeSettings(storedLegacy);
@@ -342,10 +344,8 @@ ok(
   new Set(migrated.personas.map((p) => p.id)).size === migrated.personas.length,
 );
 ok('migration: active voice unchanged', migrated.activePersonaId === 'p_default');
-ok(
-  'migration: per-platform overrides unchanged',
-  migrated.platformPersona.linkedin === 'p_custom',
-);
+ok('migration: per-platform voice override unchanged', migrated.platformPersona.linkedin === 'p_custom');
+ok('migration: per-platform tone override preserved', migrated.platformTone.linkedin === 'Witty, dry humour');
 ok('migration: seed version recorded', migrated.personaSeedVersion === PERSONA_SEED_VERSION);
 
 const twice = seedPersonas(migrated.personas);
@@ -353,6 +353,22 @@ ok(
   'migration: idempotent',
   twice.length === migrated.personas.length &&
     twice.every((p, i) => p.id === migrated.personas[i].id),
+);
+
+/* -------------------------------- tones -------------------------------- */
+
+ok(
+  'tone: platform override wins',
+  resolveTone({ defaults: { tone: 'Direct' }, platformTone: { linkedin: 'Witty' } }, 'linkedin') ===
+    'Witty',
+);
+ok(
+  'tone: inherit uses the global default',
+  resolveTone({ defaults: { tone: 'Direct' }, platformTone: { x: 'inherit' } }, 'x') === 'Direct',
+);
+ok(
+  'tone: missing platform override falls back',
+  resolveTone({ defaults: { tone: 'Direct' } }, 'facebook') === 'Direct',
 );
 
 /* ------------------------------ quality ------------------------------ */

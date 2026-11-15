@@ -118,11 +118,31 @@ function ComposerDemo() {
               Add a comment…
             </div>
             <div className="demo-actions">
-              {['Emoji', 'GIF', 'Image'].map((label) => (
-                <button key={label} type="button" aria-label={label} className="demo-icon-btn">
-                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#666" strokeWidth="1.4">
-                    <circle cx="8" cy="8" r="5.5" />
-                  </svg>
+              {[
+                { label: 'Emoji', glyph: '🙂' },
+                { label: 'GIF', glyph: 'GIF' },
+                { label: 'Image', glyph: '🖼' },
+              ].map(({ label, glyph }) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-label={label}
+                  className="demo-icon-btn"
+                  style={{
+                    border: label === 'GIF' ? '1px solid #8a8a8a' : 0,
+                    background: 'transparent',
+                    borderRadius: label === 'GIF' ? 4 : 0,
+                    width: label === 'GIF' ? 28 : 24,
+                    height: 24,
+                    padding: 0,
+                    fontSize: label === 'GIF' ? 9 : 15,
+                    fontWeight: label === 'GIF' ? 700 : 400,
+                    color: '#555',
+                    cursor: 'pointer',
+                    lineHeight: '24px',
+                  }}
+                >
+                  {glyph}
                 </button>
               ))}
               <button type="button" style={{ marginLeft: 'auto' }} className="demo-post-btn">

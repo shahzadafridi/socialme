@@ -72,6 +72,9 @@ export const browser = {
     },
   },
   runtime: {
+    getManifest() {
+      return { version: '0.7.0' };
+    },
     async sendMessage() {
       return { ok: true };
     },

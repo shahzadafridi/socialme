@@ -196,11 +196,13 @@ function rowFromSubmit(editor: HTMLElement): Toolbar | null {
  * The tight icon group around the anchor. Inserting after the group itself
  * (rather than inside it) leaves the ✦ floating in the composer's flex gap.
  */
-function groupAround(anchor: HTMLElement, editor: HTMLElement): Toolbar | null {
+function groupAround(anchor: HTMLElement, editor: HTMLElement, mode: 'comment' | 'dm' | 'note'): Toolbar | null {
   const editorRect = visualRect(editor);
   const rect = anchor.getBoundingClientRect();
   // Never borrow an icon far above the editor (conversation header, page chrome).
-  // A comment box's media toolbar can sit level with the editor's top edge.
+  // A comment box's media toolbar can sit level with the editor's top edge, but
+  // a DM toolbar is always below it — above that is a message reaction.
+  if (mode === 'dm' && rect.top < editorRect.bottom - 12) return null;
   if (rect.top < editorRect.top - 120) return null;
   if (rect.top > editorRect.bottom + 240) return null;
 
@@ -400,7 +402,7 @@ export function insertButton(entry: Entry): boolean {
   }
 
   const found = findToolbar(entry.editor);
-  const grouped = found ? groupAround(found.anchor, entry.editor) : null;
+  const grouped = found ? groupAround(found.anchor, entry.editor, entry.mode) : null;
 
   const facebook = /(^|\.)facebook\.com$/.test(location.hostname);
 

@@ -121,6 +121,9 @@ export const xAdapter: PlatformAdapter = {
   },
 
   findOpenEditors() {
+    // New-post pages are out of scope; their composer has no Comment/Reply target.
+    if (/^\/compose(\/|$)/.test(location.pathname)) return [];
+
     // With a dialog open, only its composer matters; the page behind it is inert.
     const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(
       (node) => node.querySelector(EDITOR_SELECTOR),

@@ -175,7 +175,8 @@ function openComment(btn) {
   for (const [label, glyph] of [
     ['Open emoji keyboard', '😊'],
     ['Add a GIF', 'GIF'],
-    ['Add an image', '🖼'],
+    // LinkedIn labels this control "Share photo"; it must not read as a submit.
+    ['Share photo', '🖼'],
   ]) {
     const button = document.createElement('button');
     button.setAttribute('aria-label', label);

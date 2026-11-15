@@ -2,7 +2,7 @@
  * Pure-logic self test: prompt construction and draft scoring.
  * Run with: node scripts/selftest.mjs
  */
-import { buildPrompt } from '../lib/core/ai/prompt.ts';
+import { buildPrompt, parseLengthHint } from '../lib/core/ai/prompt.ts';
 import { buildTranscript } from '../lib/integrations/messaging.ts';
 import { analyzeDraft } from '../lib/core/ai/quality.ts';
 import {
@@ -245,6 +245,69 @@ ok('dm: forces an answer to the last line', /LAST line/i.test(dm.user));
 ok('dm: warns against generic questions', /generic question/i.test(dm.user));
 ok('dm: smaller token budget', dm.maxTokens <= 500);
 ok('dm: keeps brand context', dm.system.includes('WHAT I AM BUILDING'));
+
+/* --------------------- instruction-driven length --------------------- */
+
+ok(
+  'length hint: "keep it under 1 line" is short and one line',
+  (() => {
+    const h = parseLengthHint('keep it under 1 line');
+    return h?.length === 'short' && h?.oneLine === true;
+  })(),
+);
+ok(
+  'length hint: "two lines" is short but not one line',
+  (() => {
+    const h = parseLengthHint('Keep it to 2 lines.');
+    return h?.length === 'short' && h?.oneLine === false;
+  })(),
+);
+ok('length hint: no instruction is null', parseLengthHint('') === null);
+
+const dmOneLine = buildPrompt({
+  request: {
+    platform: 'linkedin',
+    channel: 'dm',
+    post: { author: 'Mohammad', text: 'them: Are you open to hearing about a role?' },
+    extra: 'keep it under 1 line',
+  },
+  persona,
+  platform: 'linkedin',
+  brand,
+});
+ok('dm: one-line instruction overrides the sentence target', dmOneLine.user.includes('Exactly ONE short sentence'));
+ok('dm: one-line instruction adds a hard system rule', dmOneLine.system.includes('ONE line only'));
+ok(
+  'dm: instruction is placed before the length section',
+  dmOneLine.user.indexOf('MY INSTRUCTION') < dmOneLine.user.indexOf('LENGTH'),
+);
+ok('dm: one-line instruction caps the token budget', dmOneLine.maxTokens <= 200);
+ok('dm: one-line instruction keeps tone, voice and brand', dmOneLine.system.includes('Tone: Direct and practical') && dmOneLine.system.includes('Founder of a dev studio') && dmOneLine.system.includes('WHAT I AM BUILDING'));
+
+const longButShort = buildPrompt({
+  request: {
+    channel: 'comment',
+    platform: 'linkedin',
+    post,
+    length: 'long',
+    extra: 'Keep it under 2 lines.',
+  },
+  persona,
+  platform: 'linkedin',
+});
+ok('comment: instruction beats an explicit long length', longButShort.user.includes('One short sentence'));
+ok('comment: instruction still states the hard limit', longButShort.user.includes('Hard max 700 characters'));
+ok('comment: one-line instruction caps the token budget', longButShort.maxTokens <= 220);
+
+const toned = buildPrompt({
+  request: { channel: 'comment', platform: 'linkedin', post, tone: 'Friendly' },
+  persona,
+  platform: 'linkedin',
+});
+ok(
+  'tone: the menu tone overrides the persona tone',
+  toned.system.includes('Tone: Friendly') && !toned.system.includes('Tone: Direct and practical'),
+);
 
 /* ---------------------------- persona voice --------------------------- */
 

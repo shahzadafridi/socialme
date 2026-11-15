@@ -15,7 +15,7 @@ import { resolveTone } from '@/lib/core/defaults';
 import type { Channel, GenerateRequest, PortMessage, Settings } from '@/lib/core/types';
 import type { Mode } from '@/lib/ui/composer/types';
 import { type Entry, setState, styleButton } from '@/lib/ui/composer/button';
-import { insertButton, isUsableButton } from '@/lib/ui/composer/placement';
+import { insertButton, isUsableButton, needsReplacing } from '@/lib/ui/composer/placement';
 import { openToneMenu } from '@/lib/ui/composer/menu';
 
 const BUTTON_CLASS = 'socialme-quick';
@@ -120,6 +120,12 @@ export function installComposerButtons(
     }
     entry.button.remove();
     entries.delete(editor);
+  };
+
+  const place = (entry: Entry): boolean => {
+    const ok = insertButton(entry);
+    if (ok) entry.placedParent = entry.button.parentElement;
+    return ok;
   };
 
   const mount = (editor: HTMLElement, mode: Mode) => {
@@ -277,7 +283,7 @@ export function installComposerButtons(
     });
 
     entries.set(editor, entry);
-    if (!insertButton(entry)) entries.delete(editor);
+    if (!place(entry)) entries.delete(editor);
   };
 
   const scan = () => {
@@ -313,10 +319,15 @@ export function installComposerButtons(
       // The platform may re-render the toolbar, or a row may hide the icon.
       // Put it back, and remount when the current spot is no longer usable.
       if (!entry.button.isConnected) {
-        insertButton(entry);
-      } else if (!isUsableButton(entry.button)) {
+        place(entry);
+      } else if (
+        !isUsableButton(entry.button) ||
+        // A platform re-render can wrap the icon in another control's element,
+        // or add icons after it. Re-place so it settles back in the row.
+        needsReplacing(entry)
+      ) {
         entry.button.remove();
-        insertButton(entry);
+        place(entry);
       }
     }
   };

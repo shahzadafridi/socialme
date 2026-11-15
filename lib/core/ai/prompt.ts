@@ -88,6 +88,43 @@ const LENGTH_TARGET: Record<Channel, Record<PlatformId, Record<Length, string>>>
   },
 };
 
+export interface LengthHint {
+  length: Length;
+  /** The instruction asked for a single line/sentence. */
+  oneLine: boolean;
+}
+
+/**
+ * Users often put the length in the free-text instruction ("keep it under 2
+ * lines"). Without parsing it the numbered LENGTH target wins and the model
+ * still writes a paragraph.
+ */
+export function parseLengthHint(extra?: string): LengthHint | null {
+  const text = (extra ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+
+  if (/(one|single|1)[\s-]*(short\s+)?(line|liner|sentence)/.test(text)) {
+    return { length: 'short', oneLine: true };
+  }
+  if (
+    /(under|less than|max(imum)?|no more than|at most|within)\s+(one|two|1|2)\s+(short\s+)?(lines?|sentences?)/.test(
+      text,
+    )
+  ) {
+    return { length: 'short', oneLine: true };
+  }
+  if (/(two|2)\s+(short\s+)?(lines?|sentences?)/.test(text)) {
+    return { length: 'short', oneLine: false };
+  }
+  if (/(three|3)\s+(short\s+)?(lines?|sentences?)/.test(text)) {
+    return { length: 'medium', oneLine: false };
+  }
+  if (/(short|brief|concise|punchy|one[- ]liner|no more than a few words)/.test(text)) {
+    return { length: 'short', oneLine: false };
+  }
+  return null;
+}
+
 function voiceBlock(persona: Persona): string {
   const lines: string[] = [];
   if (persona.role) lines.push(`- Who I am: ${persona.role}`);
@@ -192,7 +229,8 @@ export function buildPrompt(ctx: BuildContext): BuiltPrompt {
   const { request, persona, platform, brand } = ctx;
   const channel = request.channel;
   const angle: Angle = request.angle ?? 'insight';
-  const length: Length = request.length ?? persona.length ?? 'medium';
+  const hint = parseLengthHint(request.extra);
+  const length: Length = hint?.length ?? request.length ?? persona.length ?? 'medium';
   const tone = request.tone?.trim() || persona.tone;
   const language = languageOf(persona, request);
   const guide = PLATFORM_GUIDE[platform];
@@ -223,7 +261,11 @@ ${channel === 'dm' ? DM_GUIDE : channel === 'note' ? NOTE_GUIDE : guide.comment}
 ${HARD_RULES}
 - ${emojiRule(persona)}
 - ${channel === 'comment' ? 'No hashtags in comments.' : channel === 'note' ? 'No hashtags in a connection note.' : 'No hashtags.'}
-- Length must not exceed ${limit} characters. This is a hard limit.
+- Length must not exceed ${limit} characters. This is a hard limit.${
+    hint?.oneLine
+      ? '\n- ONE line only: a single short sentence with no line breaks. Do not add a second sentence.'
+      : ''
+  }
 - Language: ${language === 'auto' ? 'match the language of the source' : language}.
 - Specificity beats cleverness. A reader should learn one thing or feel one thing.`;
 
@@ -259,7 +301,7 @@ ${HARD_RULES}
       : '';
 
   const extra = request.extra?.trim()
-    ? `\n\nMY INSTRUCTION FOR THIS ONE (follow it, it overrides style defaults): ${request.extra.trim()}`
+    ? `\n\nMY INSTRUCTION FOR THIS ONE (highest priority; it overrides length, format and style defaults): ${request.extra.trim()}`
     : '';
 
   if (channel === 'dm') {
@@ -279,15 +321,21 @@ RULES FOR THIS REPLY
 - If they asked something, answer it. If they shared something, react to the specific thing they said.
 - Never open with a generic question about their goals.
 
+${extra}
+
 LENGTH
-${LENGTH_TARGET.dm[platform][length]} is ideal. Hard max ${cap} characters.${extra}
+${
+  hint?.oneLine
+    ? 'Exactly ONE short sentence, no line breaks.'
+    : `${LENGTH_TARGET.dm[platform][length]} is ideal.`
+} Hard max ${cap} characters.
 
 Write the reply to the last message now.`;
 
     return {
       system,
       user,
-      maxTokens: 420,
+      maxTokens: hint?.oneLine ? 160 : 420,
       temperature: 0.85,
     };
   }
@@ -296,8 +344,12 @@ Write the reply to the last message now.`;
     const user = `${taskBlock('note', platform)}
 
 LENGTH
-Target ${LENGTH_TARGET.note[platform][length]}. Hard max ${Math.min(limit, NOTE_LIMIT)} characters.
-${recipientBlock}${source}${extra}${avoid}${samples}
+${
+  hint?.oneLine
+    ? 'One short line, no line breaks.'
+    : `Target ${LENGTH_TARGET.note[platform][length]}.`
+} Hard max ${Math.min(limit, NOTE_LIMIT)} characters.
+${extra}${recipientBlock}${source}${avoid}${samples}
 
 QUALITY BAR
 They should be able to tell in one line why I chose them specifically, and the note should not read like a template sent to fifty people.
@@ -319,14 +371,20 @@ ANGLE — ${angle.toUpperCase()}
 ${ANGLE_GUIDE[angle]}
 
 LENGTH
-Target ${LENGTH_TARGET.comment[platform][length]}. Hard max ${limit} characters.
+${
+  hint?.oneLine
+    ? `One short sentence (roughly 8-20 words) with no line breaks. Hard max ${limit} characters.`
+    : `Target ${LENGTH_TARGET.comment[platform][length]}. Hard max ${limit} characters.`
+}
 
 QUALITY BAR
 The person I am answering should want to reply back. Reference one concrete detail without restating it.${source}${replyToBlock}${extra}${avoid}${samples}
 
 Write the final text now.`;
 
-  const maxTokens = Math.min(1600, Math.ceil(Math.min(limit, 900) / 2.2) + 160);
+  const maxTokens = hint?.oneLine
+    ? 220
+    : Math.min(1600, Math.ceil(Math.min(limit, 900) / 2.2) + 160);
 
   return {
     system,

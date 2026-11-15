@@ -24,9 +24,13 @@ function isOverflowControl(node: HTMLElement): boolean {
   return OVERFLOW_ICON.test(labelOf(node)) || OVERFLOW_ICON.test((node.innerText ?? '').trim());
 }
 
+/** Media controls can start with "Share" too ("Share photo"); they are not submits. */
+const MEDIA_ACTION = /\b(photo|image|gif|emoji|video|poll|location|document|media)\b/i;
+
 function isSubmitControl(node: HTMLElement): boolean {
   const label = (node.getAttribute('aria-label') ?? '').trim();
   const text = (node.innerText ?? '').trim();
+  if (MEDIA_ACTION.test(label) || MEDIA_ACTION.test(text)) return false;
   // "Send", "Send message", "Post comment" — but not a button that merely
   // contains the word (e.g. a menu item called "Schedule send").
   return /^(send|comment|post|reply|share)\b/i.test(label) || /^(send|comment|post|reply|share)$/i.test(text);
@@ -36,6 +40,7 @@ function iconsIn(root: ParentNode): HTMLElement[] {
   return Array.from(
     root.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
   )
+    .filter((node) => !node.classList.contains('socialme-quick'))
     .filter(isIconButton)
     .filter((node) => !isSubmitControl(node))
     .filter((node) => !isOverflowControl(node));
@@ -147,6 +152,35 @@ function placeAtXEmoji(entry: Entry): boolean {
   if (wrapper) wrapper.after(entry.button);
   else emoji.after(entry.button);
   return entry.button.isConnected;
+}
+
+/**
+ * True when the ✦ is no longer where the last placement put it: its row was
+ * replaced, it got wrapped inside another control, or a new icon appeared to
+ * its right (LinkedIn adds the photo control after the first keystroke).
+ */
+export function needsReplacing(entry: Entry): boolean {
+  const { button } = entry;
+  const parent = button.parentElement;
+  if (!parent) return true;
+  if (entry.placedParent && parent !== entry.placedParent) return true;
+
+  const xPage = /(^|\.)(x|twitter)\.com$/.test(location.hostname);
+  // X's ✦ sits right after the emoji by design, not at the end of the row.
+  if (xPage) return false;
+
+  const rect = button.getBoundingClientRect();
+  const centre = rect.top + rect.height / 2;
+  return Array.from(
+    parent.querySelectorAll<HTMLElement>('button, [role="button"], [aria-haspopup], [aria-label]'),
+  )
+    .filter((node) => node !== button && isVisible(node))
+    .filter((node) => !isSubmitControl(node) && isIconButton(node))
+    .some((node) => {
+      const other = node.getBoundingClientRect();
+      const sameLine = Math.abs(other.top + other.height / 2 - centre) < 24;
+      return sameLine && other.left > rect.right - 2;
+    });
 }
 
 /** Size the button and its glyph so it reads as one of the row's icons. */
@@ -503,7 +537,8 @@ export function insertButton(entry: Entry): boolean {
     ).filter(isVisible);
     const submit = controls.find(isSubmitControl) ?? null;
     const icons = controls.filter(
-      (node) => node !== submit && !isOverflowControl(node) && isIconButton(node),
+      (node) =>
+        node !== entry.button && node !== submit && !isOverflowControl(node) && isIconButton(node),
     );
     const anchor = icons[icons.length - 1] ?? toolbar.anchor;
     const size = icons.length ? matchIconSize(icons, anchor) : 26;
@@ -523,12 +558,11 @@ export function insertButton(entry: Entry): boolean {
       const submitWrapper = submit ? childOfRow(toolbar.row, submit) : null;
       const anchorWrapper = childOfRow(toolbar.row, anchor);
       if (anchor !== submit) {
-        // LinkedIn's footer is [icon group] [flexible gap] [Send group]. Insert
-        // beside the icon *inside* that group; inserting into the outer row
-        // parks the ✦ in the gap (the 0.7.0 regression). The live fixture locks
-        // this: the button's parent must be the icon group.
-        anchor.after(entry.button);
-        if (!entry.button.isConnected && anchorWrapper) anchorWrapper.after(entry.button);
+        // Sit at the row's own level, after the wrapper that holds the last icon.
+        // Inserting *inside* that wrapper lets a platform re-render wrap the ✦
+        // together with the icon (LinkedIn's GIF control), stacking the two.
+        if (anchorWrapper) anchorWrapper.after(entry.button);
+        else anchor.after(entry.button);
       } else if (submitWrapper) {
         toolbar.row.insertBefore(entry.button, submitWrapper);
       } else {
@@ -536,12 +570,16 @@ export function insertButton(entry: Entry): boolean {
       }
     }
 
-    // Comment toolbars are right-aligned and have no room after the last icon;
-    // the ✦ would clip outside the editor. If that happens, keep it in the same
-    // icon group but move it to the start so it stays visible.
-    const editorBox = visualRect(entry.editor);
+    // If the row itself has no room after the last icon the ✦ can be clipped.
+    // Compare against the row's own box, not the editor: a toolbar can sit
+    // beside the editor (Facebook's inline comment box) and still have room.
+    const rowBox = toolbar.row.getBoundingClientRect();
     const placed = entry.button.getBoundingClientRect();
-    if (placed.width > 0 && icons.length >= 2 && placed.right > editorBox.right - 2) {
+    if (
+      placed.width > 0 &&
+      icons.length >= 2 &&
+      (placed.right > rowBox.right + 1 || placed.left < rowBox.left - 1)
+    ) {
       icons.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
       const first = icons[0];
       const firstWrapper = childOfRow(toolbar.row, first);

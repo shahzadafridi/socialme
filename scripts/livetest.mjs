@@ -418,6 +418,15 @@ try {
           commentLayout.inToolbar,
           `comment icon not in the media toolbar (${commentLayout.parent})`,
         );
+        const lastIcon = await uiEval(
+          session,
+          `const b = document.querySelector('.socialme-quick');
+           const r = b.getBoundingClientRect();
+           return Array.from(b.parentElement.querySelectorAll('button, [role="button"]'))
+             .filter((n) => n !== b)
+             .filter((n) => n.getBoundingClientRect().left > r.right - 1).length;`,
+        );
+        expect(lastIcon === 0, `${lastIcon} icon(s) sit to the right of the ✦`);
       }
       if (platform === 'x') {
         // X's icon row is a horizontal scroller: the ✦ must sit inside it, right
@@ -470,7 +479,7 @@ try {
       expect(menu.tones >= 8, `tone chips ${menu.tones}`);
       expect(menu.generate, 'generate button missing');
 
-      await chooseTone(session, 'Friendly', 'mention the 3-week launch');
+      await chooseTone(session, 'Friendly', 'mention the 3-week launch; keep it under 1 line');
 
       const text = await waitFor(
         session,
@@ -486,6 +495,14 @@ try {
       expect(
         (servers.stats.lastPrompt ?? '').includes('mention the 3-week launch'),
         'the custom instruction did not reach the prompt',
+      );
+      expect(
+        /ONE line only/i.test(servers.stats.lastPrompt ?? ''),
+        'the one-line instruction did not reach the prompt',
+      );
+      expect(
+        /One short sentence/i.test(servers.stats.lastPrompt ?? ''),
+        'the one-line length target did not reach the prompt',
       );
       const state = await waitFor(
         session,

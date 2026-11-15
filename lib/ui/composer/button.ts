@@ -7,6 +7,8 @@ export interface Entry {
   port: any;
   text: string;
   mode: Mode;
+  /** Row that owned the icon when it was last placed, to catch re-render drift. */
+  placedParent?: HTMLElement | null;
   resetTimer?: number;
 }
 

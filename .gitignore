@@ -8,3 +8,7 @@ stats.html
 *.log
 .env
 .env.*
+.commandcode/
+command-code-session-*.html
+__pycache__/
+*.pyc

@@ -2,7 +2,7 @@ import { PROVIDER_PRESETS } from '@/lib/core/constants';
 import type { Brand, Persona, PlatformId, ProviderId, SafetySettings, Settings } from '@/lib/core/types';
 
 /** Bump when the built-in voices change so existing installs get the new seeds once. */
-export const PERSONA_SEED_VERSION = 2;
+export const PERSONA_SEED_VERSION = 3;
 
 export function newId(prefix = 'id'): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -36,7 +36,7 @@ function persona(overrides: Partial<Persona> & { id: string; name: string }): Pe
  *
  * `p_default` is the user's own voice and is never rewritten by the migration below.
  */
-export const STARTER_PERSONAS: Persona[] = [
+const STARTER_VOICES: Persona[] = [
   persona({
     id: 'p_default',
     name: 'My voice',
@@ -178,6 +178,14 @@ export const STARTER_PERSONAS: Persona[] = [
   }),
 ];
 
+export const STARTER_PERSONAS: Persona[] = STARTER_VOICES.map((voice) => ({
+  ...voice,
+  styleExamples: voice.samplePosts,
+  samplePosts: '',
+  voiceFeedback: [],
+  voicePreferences: voice.id === 'p_default' ? { register: 'conversational', questions: 'when-needed', contractions: true } : undefined,
+}));
+
 /**
  * Values shipped before the voice refresh. A stored field that still equals its old
  * value is treated as untouched and may be updated; anything else is the user's edit.
@@ -261,7 +269,14 @@ function fillMissing(existing: Persona, seed: Persona): Persona {
  * - leaves user-created personas, the active selection and per-platform overrides alone
  */
 export function seedPersonas(stored: Persona[]): Persona[] {
-  const personas = stored.map((p) => ({ ...p }));
+  const personas = stored.map((p) => {
+    const previous = STARTER_VOICES.find((seed) => seed.id === p.id);
+    const seededSample = Boolean(previous?.samplePosts && p.samplePosts === previous.samplePosts);
+    return {
+      ...p,
+      ...(seededSample ? { samplePosts: '', styleExamples: previous!.samplePosts } : {}),
+    };
+  });
 
   for (const seed of STARTER_PERSONAS) {
     const byId = personas.findIndex((p) => p.id === seed.id);
@@ -296,11 +311,12 @@ export function makeProvider(id: ProviderId, overrides: Partial<Settings['provid
     enabled: overrides.enabled ?? true,
     baseUrl: overrides.baseUrl ?? preset.baseUrl,
     model: overrides.model ?? preset.defaultModel,
-    temperature: overrides.temperature ?? (preset.kind === 'anthropic' ? 0.8 : 0.85),
+    temperature: overrides.temperature ?? 0.65,
   };
 }
 
 export const DEFAULT_BRAND: Brand = {
+  mode: 'relevant',
   name: '',
   positioning: '',
   pillars: '',
@@ -337,7 +353,7 @@ export function defaultSettings(): Settings {
     ],
     activeProvider: 'deepseek',
     brand: { ...DEFAULT_BRAND },
-    personas: STARTER_PERSONAS,
+    personas: STARTER_PERSONAS.map((p) => ({ ...p, voiceFeedback: [...(p.voiceFeedback ?? [])], voicePreferences: p.voicePreferences ? { ...p.voicePreferences } : undefined })),
     activePersonaId: 'p_default',
     personaSeedVersion: PERSONA_SEED_VERSION,
     platformPersona: {
@@ -351,7 +367,7 @@ export function defaultSettings(): Settings {
       facebook: 'inherit',
     },
     defaults: {
-      angle: 'insight',
+      angle: 'natural',
       tone: '',
       replyLength: 'medium',
       extraInstruction: '',
@@ -396,8 +412,10 @@ export function mergeSettings(stored: unknown): Settings {
 
   const storedPersonas = input.personas?.length ? input.personas : base.personas;
   const storedSeedVersion = input.personaSeedVersion ?? 1;
-  const personas =
-    storedSeedVersion < PERSONA_SEED_VERSION ? seedPersonas(storedPersonas) : storedPersonas;
+  const personas = (storedSeedVersion < PERSONA_SEED_VERSION ? seedPersonas(storedPersonas) : storedPersonas)
+    .map((p) => ({ ...p, voiceFeedback: p.voiceFeedback ?? [],
+      voicePreferences: p.id === 'p_default' || p.voicePreferences
+        ? { register: 'conversational' as const, questions: 'when-needed' as const, contractions: true, ...p.voicePreferences } : undefined }));
 
   return {
     ...base,

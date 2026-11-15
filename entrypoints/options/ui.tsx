@@ -85,16 +85,19 @@ export function TextArea({
   onChange,
   placeholder,
   rows = 4,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   rows?: number;
+  disabled?: boolean;
 }) {
   return (
     <textarea
       className="textarea"
       rows={rows}
+      disabled={disabled}
       value={value}
       placeholder={placeholder}
       onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}

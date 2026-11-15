@@ -91,6 +91,7 @@ export const PROVIDER_PRESETS: Record<ProviderId, ProviderPreset> = {
 };
 
 export const ANGLES: Array<{ id: Angle; label: string; hint: string }> = [
+  { id: 'natural', label: 'Natural reply', hint: 'Respond to the point in your own words; no forced insight or question' },
   { id: 'insight', label: 'Add insight', hint: 'Extend the idea with something the author missed' },
   { id: 'contrarian', label: 'Respectful pushback', hint: 'Disagree with one specific point, politely' },
   { id: 'question', label: 'Sharp question', hint: 'Ask something that shows real experience' },

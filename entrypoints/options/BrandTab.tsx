@@ -1,5 +1,5 @@
 import type { Brand, Settings } from '@/lib/core/types';
-import { Card, Field, Input, Note, TextArea } from '@/entrypoints/options/ui';
+import { Card, Field, Input, Note, TextArea, Select } from '@/entrypoints/options/ui';
 
 export function BrandTab({
   settings,
@@ -10,16 +10,15 @@ export function BrandTab({
 }) {
   const brand = settings.brand;
   const set = (patch: Partial<Brand>) => onChange({ brand: { ...brand, ...patch } });
-  const filled = Object.values(brand).filter((value) => value.trim()).length;
+  const filled = Object.entries(brand).filter(([key, value]) => key !== 'mode' && typeof value === 'string' && value.trim()).length;
 
   return (
     <>
       <div>
         <h1>Brand</h1>
         <p className="lede">
-          A persona is how you sound. A brand is what people should remember you for. Every prompt
-          gets this block, so the model keeps your comments inside your territory instead of writing
-          generically good takes about anything.
+          Your brand gives the assistant context about your work, beliefs and real experience.
+          Everyday replies can stay everyday replies. You choose when professional context belongs.
         </p>
       </div>
 
@@ -28,6 +27,17 @@ export function BrandTab({
           ? 'Nothing filled in yet — drafts still work, they will just be less recognisably yours. Start with positioning and pillars; those two change the output the most.'
           : `${filled} of 9 fields set. Positioning and pillars carry most of the weight.`}
       </Note>
+
+      <Card title="When should your brand shape a reply?">
+        <Field label="Brand context">
+          <Select value={brand.mode ?? 'relevant'} onChange={(mode) => set({ mode: mode as Brand['mode'] })} options={[
+            { value: 'relevant', label: 'Only when relevant (recommended)' },
+            { value: 'strict', label: 'Stay within my professional topics' },
+            { value: 'off', label: 'Use my voice without brand context' },
+          ]} />
+        </Field>
+        <p className="card__desc">Your “Never claim or discuss” rules always apply. Writing examples never count as proof of professional experience.</p>
+      </Card>
 
       <Card title="What you are building" desc="Written in the first person, as a brief to a ghostwriter.">
         <Field label="Name or handle" hint="How you refer to yourself in the brief." >
@@ -52,7 +62,7 @@ export function BrandTab({
 
         <Field
           label="Content pillars"
-          hint="3-5 topics you want to be known for. One per line. Comments should land inside one of them."
+          hint="3–5 topics you know. One per line. Relevant conversations can draw on these; unrelated replies do not need a brand connection."
         >
           <TextArea
             value={brand.pillars}

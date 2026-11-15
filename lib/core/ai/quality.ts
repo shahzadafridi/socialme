@@ -2,6 +2,10 @@ import { BANNED_OPENERS, CLICHE_WORDS } from '@/lib/core/constants';
 import type { PlatformId } from '@/lib/core/types';
 
 export interface QualityReport {
+  unsupportedNumbers: string[];
+  repeatsSource: boolean;
+  personalClaim: boolean;
+  duplicate: boolean;
   chars: number;
   limit: number;
   overLimit: boolean;
@@ -20,10 +24,28 @@ export interface QualityReport {
 const EMOJI_RE =
   /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu;
 
+function similarity(a: string, b: string): number {
+  const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const pairs = (text: string) => {
+    const tokens = words(text);
+    return new Set(tokens.slice(1).map((word, i) => `${tokens[i]} ${word}`));
+  };
+  const left = pairs(a), right = pairs(b);
+  if (left.size < 4 || right.size < 4) return 0;
+  return [...left].filter((pair) => right.has(pair)).length / Math.min(left.size, right.size);
+}
+
+export interface DraftContext {
+  source?: string;
+  notes?: string;
+  recentDrafts?: string[];
+}
+
 export function analyzeDraft(
   text: string,
   platform: PlatformId,
   limit: number,
+  context?: DraftContext,
 ): QualityReport {
   const clean = text.trim();
   const lower = clean.toLowerCase();
@@ -38,6 +60,14 @@ export function analyzeDraft(
   const cliches = CLICHE_WORDS.filter((w) => lower.includes(w));
   const bannedOpener = BANNED_OPENERS.find((opener) => lower.startsWith(opener));
   const overLimit = chars > limit;
+  const grounded = `${context?.source ?? ''}\n${context?.notes ?? ''}`;
+  const numbers = (value: string) => value.match(/\d+(?:[.,]\d+)*(?:%|[kKmMbB])?/g) ?? [];
+  const knownNumbers = new Set(numbers(grounded));
+  const unsupportedNumbers = context ? [...new Set(numbers(clean).filter((number) => !knownNumbers.has(number)))] : [];
+  const repeatsSource = Boolean(context?.source && similarity(clean, context.source) >= 0.8);
+  const personalClaim = Boolean(context && /\b(?:I|we|my team)\s+(?:built|shipped|ran|led|saved|cut|increased|reduced|launched|worked|tested|used)\b/i.test(clean)
+    && similarity(clean, context.notes ?? '') < 0.35);
+  const duplicate = (context?.recentDrafts ?? []).some((previous) => similarity(clean, previous) >= 0.8);
 
   const notes: string[] = [];
   let score = 58;
@@ -55,7 +85,6 @@ export function analyzeDraft(
     notes.push(`Cliché words: ${cliches.slice(0, 3).join(', ')}`);
   }
   if (hasNumber) {
-    score += 9;
     notes.push('Contains a concrete number');
   }
   if (hasQuestion && !/what do you think|curious to hear your thoughts/i.test(clean)) {
@@ -68,7 +97,6 @@ export function analyzeDraft(
     notes.push('Very short — may read as low effort');
   }
   if (sentences >= 2) score += 3;
-  if (/\b(I|my|me)\b/.test(clean)) score += 4;
   if (platform === 'linkedin' && chars >= 200) score += 4;
   if (platform === 'x' && chars <= 260) score += 4;
   if (emojiCount > 3) {
@@ -78,6 +106,10 @@ export function analyzeDraft(
 
   score = Math.max(0, Math.min(100, score));
   return {
+    unsupportedNumbers,
+    repeatsSource,
+    personalClaim,
+    duplicate,
     chars,
     limit,
     overLimit,

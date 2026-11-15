@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { LENGTHS, TONES } from '@/lib/core/constants';
 import { newId, STARTER_PERSONAS } from '@/lib/core/defaults';
 import type { Persona, Settings } from '@/lib/core/types';
-import { Button, Card, Field, Input, Segmented, Select, TextArea } from '@/entrypoints/options/ui';
+import { Button, Card, Field, Input, Segmented, Select, TextArea, Toggle } from '@/entrypoints/options/ui';
+import { VoicePreview } from './VoicePreview';
+import { ReplyExamples } from './ReplyExamples';
+import { applySharedVoiceGuide, SHARED_ENGINEERING_VOICE, SHARED_VOICE_GUIDE_URL } from '@/lib/core/shared-voice-guide';
 
 const LANGUAGES = [
   'auto',
@@ -28,8 +31,11 @@ export function PersonasTab({
   onChange: (patch: Partial<Settings>) => void;
 }) {
   const [selectedId, setSelectedId] = useState(settings.activePersonaId);
+  const [guideApplied, setGuideApplied] = useState(false);
   const persona = settings.personas.find((p) => p.id === selectedId) ?? settings.personas[0];
   const [limitDraft, setLimitDraft] = useState(String(persona.replyMaxChars));
+  const identity = settings.personas.find((p) => p.id === 'p_default') ?? persona;
+  const preferences = persona.voicePreferences ?? identity.voicePreferences ?? { register: 'conversational', questions: 'when-needed', contractions: true };
 
   useEffect(() => {
     setLimitDraft(String(persona.replyMaxChars));
@@ -77,6 +83,13 @@ export function PersonasTab({
           to a specialised voice when the thread calls for a different angle.
         </p>
       </div>
+
+      <Card title="Your shared engineering voice" desc="Direct, practical, curious and conversational. Prepared from the communication guide you shared.">
+        <details><summary>Review the style guide</summary><p style={{ whiteSpace: 'pre-wrap' }}>{SHARED_ENGINEERING_VOICE.styleNotes}</p><p>Illustrative examples stay separate from your authored writing. Your identity, real writing samples, brand proof and provider settings are preserved.</p><a href={SHARED_VOICE_GUIDE_URL} target="_blank" rel="noreferrer">Open the original shared guide</a></details>
+        <p className="card__desc">Applying it makes My voice the default on all three platforms, clears per-platform tone overrides, and uses brand context only when relevant.</p>
+        <Button small onClick={() => { onChange(applySharedVoiceGuide(settings)); setSelectedId('p_default'); setGuideApplied(true); }}>Use this guide for My voice</Button>
+        {guideApplied ? <p role="status">Guide applied. Your approved examples and feedback still take priority for vocabulary and rhythm.</p> : null}
+      </Card>
 
       <div className="persona-layout">
         <div>
@@ -138,7 +151,7 @@ export function PersonasTab({
             </div>
 
             <div className="subhead">Identity</div>
-            <Field label="Who you are" hint="One line. Role, years, what you actually do.">
+            <Field label={persona.id === identity.id ? 'Who you are' : 'Topic perspective'} hint={persona.id === identity.id ? 'One line. Role, years, what you actually do.' : 'My voice holds your real identity. This adds a perspective without claiming a different job title.'}>
               <Input
                 value={persona.role}
                 onChange={(value) => updatePersona({ role: value })}
@@ -165,6 +178,21 @@ export function PersonasTab({
 
           <Card>
             <div className="subhead">Voice</div>
+            <p className="card__desc">Your approved examples set the vocabulary and rhythm. A topic voice adds perspective without changing who you are.</p>
+            {persona.id !== identity.id ? <Toggle checked={!persona.voicePreferences} label="Use My voice conversation settings" onChange={(inherit) => updatePersona({ voicePreferences: inherit ? undefined : { ...preferences } })} /> : null}
+            <div className="grid-2">
+              <Field label="How formal should it feel?">
+                <Select value={preferences.register} onChange={(register) => updatePersona({ voicePreferences: { ...preferences, register: register as typeof preferences.register } })} options={[
+                  { value: 'conversational', label: 'Everyday conversation' }, { value: 'balanced', label: 'Professional, relaxed' }, { value: 'formal', label: 'Formal' },
+                ]} />
+              </Field>
+              <Field label="Questions in replies">
+                <Select value={preferences.questions} onChange={(questions) => updatePersona({ voicePreferences: { ...preferences, questions: questions as typeof preferences.questions } })} options={[
+                  { value: 'when-needed', label: 'Only when useful' }, { value: 'rare', label: 'Rarely' }, { value: 'never', label: 'No questions' },
+                ]} />
+              </Field>
+            </div>
+            <Toggle checked={preferences.contractions} label="Use natural contractions (I'm, don't, it's)" onChange={(contractions) => updatePersona({ voicePreferences: { ...preferences, contractions } })} />
             <div className="grid-2">
               <Field label="Tone">
                 <Select
@@ -225,7 +253,7 @@ export function PersonasTab({
             </Field>
             <Field
               label="Writing samples"
-              hint="Paste 2-3 things you actually wrote. The model matches rhythm and vocabulary, not content."
+              hint={persona.id === identity.id ? 'Paste 3–5 real comments, separated by blank lines. Short replies work too. These guide every topic voice.' : 'Optional examples for this topic voice. My voice examples are inherited automatically. Examples guide style, not factual claims.'}
             >
               <TextArea
                 value={persona.samplePosts}
@@ -235,6 +263,9 @@ export function PersonasTab({
               />
             </Field>
           </Card>
+
+          <ReplyExamples key={`examples:${persona.id}`} personaId={persona.id} />
+          <VoicePreview key={persona.id} settings={settings} persona={persona} onSample={(sample) => updatePersona({ samplePosts: [persona.samplePosts.trim(), sample].filter(Boolean).join('\n\n') })} />
 
           <Card>
             <div className="subhead">Rules for output</div>

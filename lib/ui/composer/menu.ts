@@ -1,5 +1,7 @@
 import type { MenuChoice, Mode } from '@/lib/ui/composer/types';
 import type { Entry } from '@/lib/ui/composer/button';
+import { assistantAction } from '@/lib/features/assistant/store';
+import type { Channel, PlatformId } from '@/lib/core/types';
 
 const TONE_OPTIONS: Record<Mode, string[]> = {
   comment: ['Default', 'Natural', 'Friendly', 'Formal', 'Confident', 'Concise', 'Contrarian', 'Curious'],
@@ -18,6 +20,9 @@ export interface ToneMenuOptions {
   personaId: string;
   /** Effective tone for this platform; empty means the persona's own tone. */
   tone: string;
+  context?: string;
+  draft?: string;
+  exampleContext?: { platform: PlatformId; channel: Channel; source: string };
 }
 
 function sectionLabel(text: string): HTMLDivElement {
@@ -66,6 +71,16 @@ export function openToneMenu(entry: Entry, options: ToneMenuOptions): Promise<Me
       'padding:2px 2px 1px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8a93a6';
     menu.appendChild(title);
 
+    const context = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Source context';
+    const source = document.createElement('div');
+    source.textContent = options.context || 'No profile details available.';
+    source.style.cssText = 'white-space:pre-wrap;max-height:180px;overflow:auto;padding-top:8px';
+    context.style.cssText = 'margin:8px 2px;color:#b7bfd0;font-size:11px;line-height:1.5';
+    context.append(summary, source);
+    menu.appendChild(context);
+
     // --- Voice -------------------------------------------------------------
     menu.appendChild(sectionLabel('Voice'));
     const voice = document.createElement('select');
@@ -97,6 +112,44 @@ export function openToneMenu(entry: Entry, options: ToneMenuOptions): Promise<Me
       personaId = voice.value;
     });
     menu.appendChild(voice);
+    if (options.draft?.trim()) {
+      const sample = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Teach my voice from this reply';
+      const preview = document.createElement('p');
+      preview.textContent = options.draft;
+      preview.style.cssText = 'white-space:pre-wrap;max-height:130px;overflow:auto';
+      const save = document.createElement('button');
+      save.type = 'button';
+      const includeContext = document.createElement('input');
+      includeContext.type = 'checkbox';
+      includeContext.checked = Boolean(options.exampleContext?.source.trim());
+      const includeLabel = document.createElement('label');
+      includeLabel.style.cssText = 'display:flex;gap:6px;margin:8px 0;line-height:1.5';
+      includeLabel.append(includeContext, document.createTextNode('Include the source and my reply as a pair'));
+      const paintSave = () => { save.textContent = includeContext.checked ? 'Save source + reply example' : 'Save reply as a style example'; };
+      includeContext.addEventListener('change', paintSave);
+      paintSave();
+      save.style.cssText = 'padding:7px;border:1px solid #596175;border-radius:6px;background:#252b3b;color:#fff;cursor:pointer';
+      save.addEventListener('click', () => {
+        save.disabled = true;
+        void assistantAction({ kind: 'feedback', personaId,
+          sample: includeContext.checked && options.exampleContext ? undefined : options.draft,
+          pair: includeContext.checked && options.exampleContext ? { ...options.exampleContext, reply: options.draft! } : undefined })
+          .then(() => { save.textContent = 'Saved for the selected voice'; })
+          .catch((error) => { save.textContent = error.message; save.disabled = false; });
+      });
+      sample.style.cssText = 'margin:8px 2px;font-size:11px;line-height:1.5;color:#b7bfd0';
+      sample.append(summary, preview);
+      if (options.exampleContext?.source.trim()) {
+        const original = document.createElement('p');
+        original.textContent = `Source: ${options.exampleContext.source}`;
+        original.style.cssText = 'white-space:pre-wrap;max-height:130px;overflow:auto';
+        sample.append(original, includeLabel);
+      }
+      sample.append(save);
+      menu.append(sample);
+    }
 
     // --- Tone --------------------------------------------------------------
     menu.appendChild(sectionLabel('Tone'));
@@ -157,6 +210,24 @@ export function openToneMenu(entry: Entry, options: ToneMenuOptions): Promise<Me
     }
     paint();
     menu.appendChild(grid);
+
+    menu.appendChild(sectionLabel('My rough thought (optional)'));
+    const thought = document.createElement('textarea');
+    thought.className = 'socialme-rough-thought';
+    thought.setAttribute('aria-label', 'My rough thought');
+    thought.placeholder = 'e.g. Agree, but migration costs matter';
+    thought.maxLength = 1200;
+    thought.rows = 2;
+    thought.style.cssText = 'box-sizing:border-box;display:block;width:100%;padding:8px 10px;border-radius:9px;background:#1b1f29;border:1px solid #2a2f3a;color:#e9ecf3;font:inherit;line-height:1.5;resize:vertical';
+    menu.append(thought);
+    if (options.draft?.trim()) {
+      const useDraft = document.createElement('button');
+      useDraft.type = 'button';
+      useDraft.textContent = 'Use my existing reply as the rough thought';
+      useDraft.style.cssText = 'border:0;background:transparent;color:#b7bfd0;font:inherit;font-size:11px;padding:6px 0;cursor:pointer';
+      useDraft.onclick = () => { thought.value = options.draft!.trim().slice(0, 1200); thought.focus(); };
+      menu.append(useDraft);
+    }
 
     // --- Instruction -------------------------------------------------------
     const input = document.createElement('input');
@@ -220,7 +291,7 @@ export function openToneMenu(entry: Entry, options: ToneMenuOptions): Promise<Me
     };
 
     const generate = () => {
-      close({ tone, instruction: input.value.trim(), personaId });
+      close({ tone, instruction: input.value.trim(), personaId, roughThought: thought.value.trim() || undefined });
     };
 
     footer.addEventListener('click', (event) => {

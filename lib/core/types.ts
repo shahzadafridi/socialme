@@ -19,6 +19,7 @@ export type TypingSpeed = 'fast' | 'natural' | 'careful';
 export type DmContext = 'last' | 'last3' | 'all';
 
 export type Angle =
+  | 'natural'
   | 'insight'
   | 'contrarian'
   | 'question'
@@ -77,6 +78,15 @@ export interface Persona {
   avoid: string;
   bannedWords: string;
   samplePosts: string;
+  replyExamples?: ApprovedReplyExample[];
+  /** Illustrative starter text; never evidence of the user's experience. */
+  styleExamples?: string;
+  voiceFeedback?: string[];
+  voicePreferences?: {
+    register: 'conversational' | 'balanced' | 'formal';
+    questions: 'when-needed' | 'rare' | 'never';
+    contractions: boolean;
+  };
   /* Mechanics */
   emojiLevel: 'none' | 'light' | 'moderate';
   hashtagLevel: 'none' | 'light' | 'heavy';
@@ -89,6 +99,16 @@ export interface Persona {
   language: string;
 }
 
+/** Saved only after explicit approval. Examples demonstrate response style, not facts. */
+export interface ApprovedReplyExample {
+  id: string;
+  platform: PlatformId;
+  channel: Channel;
+  source: string;
+  reply: string;
+  savedAt: number;
+}
+
 export interface Defaults {
   angle: Angle;
   tone: string;
@@ -98,6 +118,7 @@ export interface Defaults {
 
 /** Who you are building, as opposed to how you write. Shared by every persona. */
 export interface Brand {
+  mode?: 'relevant' | 'strict' | 'off';
   name: string;
   positioning: string;
   pillars: string;
@@ -134,6 +155,8 @@ export interface ActivityEvent {
   ts: number;
   platform: PlatformId;
   kind: 'generate' | 'submit';
+  id?: string;
+  confirmed?: boolean;
 }
 
 export interface Settings {
@@ -183,6 +206,8 @@ export interface HistoryItem {
 
 /** Redacted settings snapshot handed to content scripts. */
 export interface PublicSettings {
+  topics?: string;
+  evidence?: string;
   activeProvider: ProviderId;
   providerLabel: string;
   model: string;
@@ -227,6 +252,9 @@ export interface RecipientContext {
 /* ------------------------------------------------------------------ */
 
 export interface GenerateRequest {
+  /** The user's own point to express; not a request to invent an opinion. */
+  roughThought?: string;
+  revision?: { text: string; instruction: string };
   platform: PlatformId;
   channel: Channel;
   /** The post (comment channel), transcript (dm) or profile (note). */

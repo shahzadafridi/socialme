@@ -206,11 +206,12 @@ export async function* streamCompletion(
 export async function listModels(
   provider: ProviderSettings,
   apiKey: string,
+  parentSignal?: AbortSignal,
 ): Promise<string[]> {
   const preset = PROVIDER_PRESETS[provider.id];
   const kind = preset?.kind ?? 'openai';
   const base = trimBase(provider.baseUrl || preset.baseUrl);
-  const { signal, cleanup } = withTimeout(undefined, 20_000);
+  const { signal, cleanup } = withTimeout(parentSignal, 20_000);
 
   try {
     let url: string;
@@ -230,26 +231,44 @@ export async function listModels(
       headers = { Authorization: `Bearer ${apiKey}` };
     }
 
-    const res = await fetch(url, { headers, signal });
-    if (!res.ok) throw await toError(res);
-    const json = (await res.json()) as any;
-
-    if (kind === 'anthropic') {
-      return (json.data ?? []).map((m: any) => m.id).filter(Boolean);
+    const models = new Set<string>();
+    const cursors = new Set<string>();
+    const firstUrl = url;
+    for (let page = 0; page < 50; page++) {
+      signal.throwIfAborted();
+      let res = await fetch(url, { headers, signal });
+      if (provider.id === 'ollama' && res.status === 404) {
+        // Older local runtimes expose only the native model catalogue.
+        url = `${base.replace(/\/v1$/, '')}/api/tags`;
+        res = await fetch(url, { signal });
+      }
+      if (!res.ok) throw await toError(res);
+      const json = (await res.json()) as any;
+      if (!json || typeof json !== 'object') throw new AiError('Provider returned an invalid model catalogue.', 'format');
+      const rows = kind === 'gemini' ? json.models : provider.id === 'ollama' && Array.isArray(json.models) ? json.models : json.data;
+      if (!Array.isArray(rows)) throw new AiError('Provider did not return a model list. You can enter a model ID manually.', 'format');
+      for (const model of rows) {
+        if (kind === 'gemini' && !(model?.supportedGenerationMethods ?? []).includes('generateContent')) continue;
+        const id = typeof model === 'string' ? model : kind === 'gemini' ? model?.name?.replace(/^models\//, '')
+          : provider.id === 'ollama' ? model?.id ?? model?.name ?? model?.model : model?.id;
+        if (typeof id === 'string' && id.trim()) models.add(id.trim());
+      }
+      const cursor = kind === 'gemini' ? json.nextPageToken : kind === 'anthropic' && json.has_more ? json.last_id : undefined;
+      if (!cursor) {
+        if (kind === 'anthropic' && json.has_more) throw new AiError('Provider model pagination is incomplete. Refresh the list.', 'format');
+        return [...models].sort();
+      }
+      if (typeof cursor !== 'string' || cursors.has(cursor)) throw new AiError('Provider repeated a model-list page. Refresh the list.', 'format');
+      cursors.add(cursor);
+      const next = new URL(firstUrl);
+      next.searchParams.set(kind === 'gemini' ? 'pageToken' : 'after_id', cursor);
+      url = next.href;
     }
-    if (kind === 'gemini') {
-      return (json.models ?? [])
-        .filter((m: any) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
-        .map((m: any) => String(m.name ?? '').replace(/^models\//, ''))
-        .filter(Boolean);
-    }
-    // OpenAI-compatible
-    return (json.data ?? [])
-      .map((m: any) => (typeof m === 'string' ? m : m?.id))
-      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
-      .sort();
+    throw new AiError('Provider model catalogue exceeded the page limit. Enter a model ID manually.', 'format');
   } catch (error) {
     if (error instanceof AiError) throw error;
+    if (parentSignal?.aborted) throw new AiError('Model list request cancelled.', 'aborted');
+    if (signal.aborted) throw new AiError('Model list request timed out. Try refreshing.', 'timeout');
     throw new AiError((error as Error).message || 'Could not list models', 'network');
   } finally {
     cleanup();

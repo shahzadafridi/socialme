@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { PROVIDER_PRESETS } from '@/lib/core/constants';
-import { listModels, testConnection } from '@/lib/core/ai/providers';
+import { testConnection } from '@/lib/core/ai/providers';
+import { requestProviderAccess } from '@/lib/core/ai/access';
 import type { ProviderId, Settings } from '@/lib/core/types';
 import { Button, Card, Field, Input, Note, Slider } from '@/entrypoints/options/ui';
+import { ProviderModelPicker } from './ProviderModelPicker';
 
 type TestState = { state: 'idle' | 'testing' | 'ok' | 'error'; message?: string };
 
@@ -20,34 +22,21 @@ export function ProvidersTab({
   onSecret: (id: ProviderId, value: string) => void;
 }) {
   const [tests, setTests] = useState<Partial<Record<ProviderId, TestState>>>({});
-  const [fetched, setFetched] = useState<Partial<Record<ProviderId, string[]>>>({});
   const [reveal, setReveal] = useState<Partial<Record<ProviderId, boolean>>>({});
 
   const runTest = async (id: ProviderId) => {
     const provider = settings.providers.find((p) => p.id === id);
     if (!provider) return;
     setTests((prev) => ({ ...prev, [id]: { state: 'testing' } }));
-    const result = await testConnection(provider, secrets[id] ?? '');
+    let result;
+    try {
+      await requestProviderAccess(provider.baseUrl);
+      result = await testConnection(provider, secrets[id] ?? '');
+    } catch (error) { result = { ok: false, message: (error as Error).message }; }
     setTests((prev) => ({
       ...prev,
       [id]: { state: result.ok ? 'ok' : 'error', message: result.message },
     }));
-  };
-
-  const runFetch = async (id: ProviderId) => {
-    const provider = settings.providers.find((p) => p.id === id);
-    if (!provider) return;
-    try {
-      const models = await listModels(provider, secrets[id] ?? '');
-      if (models.length) setFetched((prev) => ({ ...prev, [id]: models }));
-      else
-        setTests((prev) => ({
-          ...prev,
-          [id]: { state: 'ok', message: 'This provider has no model list; type the model name.' },
-        }));
-    } catch (error) {
-      setTests((prev) => ({ ...prev, [id]: { state: 'error', message: (error as Error).message } }));
-    }
   };
 
   return (
@@ -70,9 +59,6 @@ export function ProvidersTab({
         const preset = PROVIDER_PRESETS[provider.id];
         const active = provider.id === settings.activeProvider;
         const test = tests[provider.id] ?? { state: 'idle' as const };
-        const suggestions = [
-          ...new Set([...preset.suggestedModels, ...(fetched[provider.id] ?? [])]),
-        ];
 
         return (
           <div className="provider" key={provider.id} data-active={active}>
@@ -135,22 +121,11 @@ export function ProvidersTab({
               ) : null}
 
               <div className="grid-2">
-                <Field label="Model">
-                  <input
-                    className="input input--mono"
-                    value={provider.model}
-                    list={`models-${provider.id}`}
-                    spellCheck={false}
-                    onChange={(event) => onProvider(provider.id, { model: event.target.value })}
-                    placeholder={preset.defaultModel || 'model-id'}
-                  />
-                  <datalist id={`models-${provider.id}`}>
-                    {suggestions.map((model) => (
-                      <option key={model} value={model} />
-                    ))}
-                  </datalist>
-                </Field>
-                <Field label="Base URL" hint="Change only for proxies or self-hosted models.">
+                <div className="field">
+                  <span className="field__label">Model</span>
+                  <ProviderModelPicker provider={provider} apiKey={secrets[provider.id] ?? ''} active={active} onChange={(model) => onProvider(provider.id, { model })} />
+                </div>
+                <Field label="Base URL" hint="For a new host, use Test connection to grant access.">
                   <Input
                     value={provider.baseUrl}
                     onChange={(value) => onProvider(provider.id, { baseUrl: value })}
@@ -174,9 +149,6 @@ export function ProvidersTab({
               <div className="provider__actions">
                 <Button small onClick={() => void runTest(provider.id)} disabled={test.state === 'testing'}>
                   {test.state === 'testing' ? 'Testing…' : 'Test connection'}
-                </Button>
-                <Button small variant="ghost" onClick={() => void runFetch(provider.id)}>
-                  Fetch model list
                 </Button>
                 {test.state !== 'idle' && test.state !== 'testing' ? (
                   <span className="provider__result" data-ok={test.state === 'ok'}>

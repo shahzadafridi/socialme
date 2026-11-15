@@ -6,22 +6,22 @@ export async function* readSSE(res: Response): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   let buffer = '';
 
+  const payload = (block: string) => block.split(/\r\n|\r|\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).replace(/^ /, ''))
+    .join('\n');
+
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+      buffer += decoder.decode(value, { stream: true });
 
-      let index: number;
-      while ((index = buffer.indexOf('\n\n')) !== -1) {
-        const block = buffer.slice(0, index);
-        buffer = buffer.slice(index + 2);
-        for (const line of block.split('\n')) {
-          if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (!data || data === '[DONE]') continue;
-          yield data;
-        }
+      let separator: RegExpExecArray | null;
+      while ((separator = /\r\n\r\n|\n\n|\r\r/.exec(buffer))) {
+        const data = payload(buffer.slice(0, separator.index)).trim();
+        buffer = buffer.slice(separator.index + separator[0].length);
+        if (data && data !== '[DONE]') yield data;
       }
     }
   } finally {

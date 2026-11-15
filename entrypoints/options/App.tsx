@@ -5,7 +5,7 @@ import {
   getSecrets,
   getSettings,
   saveSettings,
-  setApiKey,
+  setApiKeys,
   invalidateSettingsCache,
 } from '@/lib/data/storage';
 import type { Persona, ProviderId, Settings } from '@/lib/core/types';
@@ -15,11 +15,13 @@ import { BrandTab } from '@/entrypoints/options/BrandTab';
 import { PersonasTab } from '@/entrypoints/options/PersonasTab';
 import { SafetyTab } from '@/entrypoints/options/SafetyTab';
 import { ProvidersTab } from '@/entrypoints/options/ProvidersTab';
+import { AssistantTab } from '@/entrypoints/options/AssistantTab';
 import './style.css';
 
-export type TabId = 'providers' | 'brand' | 'personas' | 'defaults' | 'safety' | 'data';
+export type TabId = 'assistant' | 'providers' | 'brand' | 'personas' | 'defaults' | 'safety' | 'data';
 
 const TABS: Array<{ id: TabId; label: string; glyph: string }> = [
+  { id: 'assistant', label: 'Assistant', glyph: '✦' },
   { id: 'providers', label: 'AI provider', glyph: '◈' },
   { id: 'brand', label: 'Brand', glyph: '◆' },
   { id: 'personas', label: 'Voice', glyph: '◇' },
@@ -29,7 +31,7 @@ const TABS: Array<{ id: TabId; label: string; glyph: string }> = [
 ];
 
 export function OptionsApp({ initialTab }: { initialTab?: TabId } = {}) {
-  const [tab, setTab] = useState<TabId>(initialTab ?? 'providers');
+  const [tab, setTab] = useState<TabId>(initialTab ?? 'assistant');
   const [settings, setSettings] = useState<Settings | null>(null);
   const [secrets, setSecrets] = useState<Partial<Record<ProviderId, string>>>({});
   const [loaded, setLoaded] = useState(false);
@@ -57,11 +59,7 @@ export function OptionsApp({ initialTab }: { initialTab?: TabId } = {}) {
     const timer = window.setTimeout(async () => {
       try {
         await saveSettings(settings);
-        await Promise.all(
-          (Object.entries(secrets) as Array<[ProviderId, string]>).map(([id, key]) =>
-            setApiKey(id, key ?? ''),
-          ),
-        );
+        await setApiKeys(secrets);
         invalidateSettingsCache();
         setSaveState('saved');
         setSaveError('');
@@ -142,6 +140,7 @@ export function OptionsApp({ initialTab }: { initialTab?: TabId } = {}) {
         </div>
 
         <div className="content">
+          {tab === 'assistant' ? <AssistantTab settings={settings} onVoice={() => setTab('personas')} /> : null}
           {!settings.onboarded ? (
             <div className="card" style={{ borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--border))' }}>
               <div className="card__head">

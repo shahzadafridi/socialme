@@ -3,12 +3,18 @@ import { browser } from 'wxt/browser';
 import { PLATFORMS, PROVIDER_PRESETS } from '@/lib/core/constants';
 import { getLastDraft, getPublicSettings, getUsage, hasApiKey } from '@/lib/data/storage';
 import type { PlatformId, PublicSettings, UsageDay } from '@/lib/core/types';
+import { getAssistantState, watchAssistant, type AssistantState } from '@/lib/features/assistant/store';
 
 export function PopupApp() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [usage, setUsage] = useState<UsageDay | null>(null);
   const [keyed, setKeyed] = useState(true);
   const [lastDraft, setLastDraft] = useState('');
+  const [assistant, setAssistant] = useState<AssistantState | null>(null);
+  useEffect(() => {
+    void getAssistantState().then(setAssistant).catch(() => undefined);
+    return watchAssistant(setAssistant);
+  }, []);
 
   useEffect(() => {
     getPublicSettings()
@@ -68,13 +74,17 @@ export function PopupApp() {
           <b>{settings?.outputMode ?? '—'}</b>
         </div>
         <div className="pop__row">
-          <span>Sent today</span>
+          <span>Send actions observed</span>
           <b>
             {usage
               ? Object.values(usage.submitted).reduce<number>((sum, n) => sum + (n ?? 0), 0)
               : 0}
           </b>
         </div>
+      </div>
+      <div className="pop__rows">
+        <div className="pop__row"><span>Follow-ups due</span><b>{assistant?.bookmarks.filter((item) => !item.completed && item.dueAt && item.dueAt <= Date.now()).length ?? 0}</b></div>
+        {assistant?.session ? <div className="pop__row"><span>Conversations reviewed</span><b>{Math.min(assistant.session.reviewed.length, assistant.session.target)} / {assistant.session.target}</b></div> : null}
       </div>
 
       <div className="pop__sites">
@@ -101,7 +111,7 @@ export function PopupApp() {
 
       <footer className="pop__foot">
         <button className="pop__primary" onClick={openSettings}>
-          Settings &amp; personas
+          Open my engagement assistant
         </button>
         <div className="pop__hint">
           Open any post and press <kbd>⌘</kbd>

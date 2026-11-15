@@ -85,7 +85,7 @@ export function DataTab({ onChange }: { onChange: (patch: Partial<Settings>) => 
         </p>
       </div>
 
-      <Card title="Backup &amp; restore" desc="Settings and personas only. Keys are excluded on purpose.">
+      <Card title="Backup &amp; restore" desc="Settings, voices, approved feedback, saved conversations, drafts and usage. Keys are excluded; sending limits stay on this device.">
         <div className="row">
           <Button onClick={() => void download()}>Export JSON</Button>
           <Button onClick={() => fileRef.current?.click()}>Import JSON</Button>

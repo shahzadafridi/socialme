@@ -1,7 +1,7 @@
 import { browser } from 'wxt/browser';
 import { MAX_HISTORY, PROVIDER_PRESETS, STORAGE_KEYS } from '@/lib/core/constants';
 import { defaultSettings, mergeSettings } from '@/lib/core/defaults';
-import { recordActivity } from '@/lib/features/safety/limits';
+import { ASSISTANT_KEY, getAssistantState, parseAssistantState } from '@/lib/features/assistant/store';
 import type {
   DraftActionPayload,
   HistoryItem,
@@ -86,10 +86,26 @@ export async function getApiKey(providerId: ProviderId): Promise<string> {
 }
 
 export async function setApiKey(providerId: ProviderId, key: string): Promise<void> {
-  const secrets = await getSecrets();
-  if (key.trim()) secrets[providerId] = key.trim();
-  else delete secrets[providerId];
-  await write(STORAGE_KEYS.secrets, secrets);
+  const operation = secretQueue.then(async () => {
+    const secrets = await getSecrets();
+    if (key.trim()) secrets[providerId] = key.trim();
+    else delete secrets[providerId];
+    await write(STORAGE_KEYS.secrets, secrets);
+  });
+  secretQueue = operation.catch(() => undefined);
+  return operation;
+}
+
+let secretQueue: Promise<void> = Promise.resolve();
+
+/** Save the options page's complete snapshot in one storage operation. */
+export async function setApiKeys(next: Secrets): Promise<void> {
+  const secrets = Object.fromEntries(Object.entries(next)
+    .filter(([id, key]) => id in PROVIDER_PRESETS && key?.trim())
+    .map(([id, key]) => [id, key!.trim()]));
+  const operation = secretQueue.then(() => write(STORAGE_KEYS.secrets, secrets));
+  secretQueue = operation.catch(() => undefined);
+  return operation;
 }
 
 export async function hasApiKey(providerId: ProviderId): Promise<boolean> {
@@ -135,6 +151,8 @@ export async function getPublicSettings(): Promise<PublicSettings> {
   const provider =
     settings.providers.find((p) => p.id === settings.activeProvider) ?? settings.providers[0];
   return {
+    evidence: [settings.brand.proof, settings.brand.stories].filter(Boolean).join('\n'),
+    topics: settings.brand.pillars,
     activeProvider: provider.id,
     providerLabel: PROVIDER_PRESETS[provider.id]?.label ?? provider.id,
     model: provider.model,
@@ -164,7 +182,15 @@ export async function getUsage(): Promise<UsageDay> {
   return all[todayKey()] ?? { date: todayKey(), counts: {}, submitted: {} };
 }
 
-export async function recordUsage(
+let usageQueue: Promise<unknown> = Promise.resolve();
+
+export function recordUsage(platform: PlatformId, kind: 'generate' | 'submit'): Promise<UsageDay> {
+  const operation = usageQueue.then(() => updateUsage(platform, kind));
+  usageQueue = operation.catch(() => undefined);
+  return operation;
+}
+
+async function updateUsage(
   platform: PlatformId,
   kind: 'generate' | 'submit',
 ): Promise<UsageDay> {
@@ -180,7 +206,6 @@ export async function recordUsage(
   const day = all[key] ?? { date: key, counts: {}, submitted: {} };
   if (kind === 'submit') {
     day.submitted[platform] = (day.submitted[platform] ?? 0) + 1;
-    void recordActivity(platform, 'submit');
   } else {
     day.counts[platform] = (day.counts[platform] ?? 0) + 1;
   }
@@ -239,18 +264,31 @@ export async function exportAll(): Promise<string> {
   const settings = await getSettings();
   const history = await getHistory();
   const usage = await read<Record<string, UsageDay>>(STORAGE_KEYS.usage);
+  const assistant = await getAssistantState();
   // Secrets are deliberately excluded from exports.
-  return JSON.stringify({ exportedAt: new Date().toISOString(), settings, history, usage }, null, 2);
+  return JSON.stringify({ exportedAt: new Date().toISOString(), settings, history, usage, assistant }, null, 2);
 }
 
 export async function importAll(json: string): Promise<void> {
-  const parsed = JSON.parse(json) as { settings?: Settings };
+  const parsed = JSON.parse(json) as { settings?: Settings; history?: HistoryItem[]; usage?: Record<string, UsageDay>; assistant?: unknown };
   if (!parsed.settings) throw new Error('File does not contain SocialMe settings.');
+  if (parsed.settings.providers && !Array.isArray(parsed.settings.providers)) throw new Error('Invalid provider settings.');
+  if (parsed.settings.personas && !Array.isArray(parsed.settings.personas)) throw new Error('Invalid voices.');
+  if (parsed.history && (!Array.isArray(parsed.history) || parsed.history.some((item) =>
+    !item || typeof item.draft !== 'string' || typeof item.ts !== 'number' || !['linkedin', 'x', 'facebook'].includes(item.platform)))) {
+    throw new Error('Invalid draft history.');
+  }
+  if (parsed.usage && (typeof parsed.usage !== 'object' || Array.isArray(parsed.usage) || Object.values(parsed.usage).some((day) =>
+    !day || typeof day.date !== 'string' || !day.counts || !day.submitted))) throw new Error('Invalid usage history.');
   const next = mergeSettings(parsed.settings);
+  const assistant = parsed.assistant === undefined ? undefined : parseAssistantState(parsed.assistant);
   next.onboarded = true;
-  const secrets = await getSecrets();
   next.providers = next.providers.map((p) => ({ ...p, apiKey: undefined }));
-  await saveSettings(next);
-  await write(STORAGE_KEYS.secrets, secrets);
+  await browser.storage.local.set({
+    [STORAGE_KEYS.settings]: next,
+    ...(parsed.history ? { [STORAGE_KEYS.history]: parsed.history.slice(0, MAX_HISTORY) } : {}),
+    ...(parsed.usage ? { [STORAGE_KEYS.usage]: parsed.usage } : {}),
+    ...(assistant ? { [ASSISTANT_KEY]: assistant } : {}),
+  });
   invalidateSettingsCache();
 }

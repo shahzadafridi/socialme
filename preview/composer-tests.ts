@@ -92,6 +92,7 @@ export async function runComposerTest(): Promise<Array<{ name: string; ok: boole
     detail: `${document.querySelectorAll('.socialme-tone-menu button').length} options`,
   });
   menuRow?.click();
+  document.querySelector<HTMLButtonElement>('.socialme-tone-generate')?.click();
 
   for (let i = 0; i < 200; i++) {
     if (button.textContent === '✓') break;

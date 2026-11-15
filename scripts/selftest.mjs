@@ -78,7 +78,7 @@ ok(
   'reply: forbids invented statistics',
   reply.system.includes('Never invent statistics'),
 );
-ok('reply: temperature high enough to avoid boilerplate', reply.temperature >= 0.8);
+ok('reply: restrained sampling default for faithful replies', reply.temperature >= 0.4 && reply.temperature <= 0.75);
 ok('reply: token budget is bounded', reply.maxTokens > 100 && reply.maxTokens <= 1600);
 
 const replyX = buildPrompt({
@@ -319,7 +319,7 @@ const shortReply = buildPrompt({
 });
 ok(
   'persona: preferred length is used when the request omits one',
-  shortReply.user.includes('120-260 characters'),
+  shortReply.user.includes('One brief sentence, usually under 160 characters'),
 );
 
 const ctaPersona = { ...persona, cta: 'Ask what they tried' };

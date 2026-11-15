@@ -92,10 +92,15 @@ const chrome = spawn(CHROME, [
   'about:blank',
 ]);
 
+let browserError = '';
+chrome.stderr.on('data', (chunk) => { browserError = (browserError + chunk).slice(-4000); });
+chrome.on('error', (error) => { browserError = error.message; });
+
 let cdp;
 try {
   // Wait for the debugging endpoint.
   for (let i = 0; i < 60; i++) {
+    if (chrome.exitCode !== null || chrome.signalCode) throw new Error(`Browser exited before startup: ${browserError}`);
     try {
       await fetchJson('/json/version');
       break;
@@ -104,7 +109,7 @@ try {
     }
   }
 
-  const version = await fetchJson('/json/version');
+  const version = await fetchJson('/json/version').catch(() => { throw new Error(`Browser debugging endpoint unavailable. ${browserError}`); });
   cdp = await Cdp.connect(version.webSocketDebuggerUrl);
 
   // Find the extension id from the service worker target.
@@ -156,6 +161,13 @@ try {
     await sleep(200);
   }
 
+  const assistantHome = await evaluate(options.sessionId, `document.querySelector('.content h1')?.textContent`);
+  check('assistant home renders', assistantHome === 'Your engagement assistant', assistantHome);
+  await evaluate(options.sessionId, `Array.from(document.querySelectorAll('.nav-item')).find(n => n.innerText.includes('AI provider'))?.click()`);
+  for (let i = 0; i < 20; i++) {
+    if (await evaluate(options.sessionId, `Boolean(document.querySelector('.provider'))`)) break;
+    await sleep(100);
+  }
   const optionsState = await evaluate(
     options.sessionId,
     `(() => ({
@@ -170,6 +182,9 @@ try {
     optionsState.h1 === 'AI provider' && optionsState.providers === 7,
     JSON.stringify(optionsState),
   );
+
+  const modelPickers = await evaluate(options.sessionId, `({ selects: document.querySelectorAll('.provider select[aria-label$=" model"]').length, datalists: document.querySelectorAll('.provider datalist').length })`);
+  check('every provider has a real model dropdown', modelPickers.selects === 7 && modelPickers.datalists === 0, JSON.stringify(modelPickers));
 
   // Type an API key and wait for the debounced autosave.
   await evaluate(

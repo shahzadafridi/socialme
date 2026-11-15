@@ -1,7 +1,7 @@
 {
   "name": "socialme",
   "private": true,
-  "version": "0.7.6",
+  "version": "0.8.2",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -12,7 +12,8 @@
     "zip": "wxt zip",
     "compile": "tsc --noEmit",
     "test": "npm run test:logic && npm run test:e2e",
-    "test:logic": "rolldown scripts/selftest.mjs --format esm --file .tmp/selftest.mjs && node .tmp/selftest.mjs",
+    "test:logic": "rolldown scripts/selftest.mjs --format esm --file .tmp/selftest.mjs && node .tmp/selftest.mjs && npm run test:providers && node scripts/reliability.selftest.mjs",
+    "test:providers": "rolldown scripts/provider.selftest.mjs --format esm --file .tmp/provider.selftest.mjs && node .tmp/provider.selftest.mjs",
     "test:e2e": "wxt build && node scripts/e2e.mjs",
     "preview": "vite --config preview/vite.config.ts",
     "postinstall": "wxt prepare",

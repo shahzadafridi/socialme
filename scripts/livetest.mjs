@@ -118,6 +118,7 @@ const servers = await startServers();
 const profile = mkdtempSync(join(tmpdir(), 'socialme-live-'));
 const chrome = spawn(CHROME, [
   '--headless=new',
+  ...(process.env.CI ? ['--no-sandbox'] : []),
   '--disable-gpu',
   '--hide-scrollbars',
   '--no-first-run',
@@ -312,7 +313,7 @@ try {
   };
 
   /** The icon opens a tone menu first; pick an option by label. */
-  const chooseTone = async (session, label = 'Default', instruction = '') => {
+  const chooseTone = async (session, label = 'Default', instruction = '', roughThought = '') => {
     await waitFor(
       session,
       `return Boolean(document.querySelector('.socialme-tone-menu'));`,
@@ -328,6 +329,12 @@ try {
          input.dispatchEvent(new Event('input', { bubbles: true }));
          return true;`,
       );
+    }
+    if (roughThought) {
+      await uiEval(session, `const field = document.querySelector('.socialme-rough-thought');
+        if (!field) throw new Error('rough thought field missing');
+        field.value = ${JSON.stringify(roughThought)};
+        field.dispatchEvent(new Event('input', { bubbles: true })); return true;`);
     }
     await uiEval(
       session,
@@ -479,7 +486,7 @@ try {
       expect(menu.tones >= 8, `tone chips ${menu.tones}`);
       expect(menu.generate, 'generate button missing');
 
-      await chooseTone(session, 'Friendly', 'mention the 3-week launch; keep it under 1 line');
+      await chooseTone(session, 'Friendly', 'mention the 3-week launch; keep it under 1 line', 'Agree, but migration costs matter.');
 
       const text = await waitFor(
         session,
@@ -496,6 +503,9 @@ try {
         (servers.stats.lastPrompt ?? '').includes('mention the 3-week launch'),
         'the custom instruction did not reach the prompt',
       );
+      expect((servers.stats.lastPrompt ?? '').includes('MY ROUGH THOUGHT'), 'rough thought brief did not reach the model');
+      expect((servers.stats.lastPrompt ?? '').includes('Agree, but migration costs matter.'), 'rough thought text did not reach the model');
+      expect(!(servers.stats.lastPrompt ?? '').includes('ANGLE —'), 'selected angle overrode the rough thought');
       expect(
         /ONE line only/i.test(servers.stats.lastPrompt ?? ''),
         'the one-line instruction did not reach the prompt',

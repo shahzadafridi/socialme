@@ -217,6 +217,88 @@ async function collect(provider, key, extra = {}) {
 
 /* ------------------------------- missing key ------------------------------ */
 
+function stubModelPages(pages) {
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const page = pages[calls.length - 1];
+    if (!page) throw new Error('Unexpected additional page request');
+    return new Response(JSON.stringify(page.json), { status: page.status ?? 200, headers: { 'content-type': 'application/json' } });
+  };
+  return calls;
+}
+
+{
+  const calls = stubModelPages([
+    { json: { models: [{ name: 'models/text-one', supportedGenerationMethods: ['generateContent'] }], nextPageToken: 'cursor / ?' } },
+    { json: { models: [{ name: 'models/text-two', supportedGenerationMethods: ['generateContent'] }, { name: 'models/embed-only', supportedGenerationMethods: ['embedContent'] }] } },
+  ]);
+  const models = await listModels(gemini, 'fake-key');
+  ok('models: Gemini loads all catalogue pages', models.join(',') === 'text-one,text-two');
+  ok('models: Gemini forwards the encoded cursor and keeps authentication', new URL(calls[1].url).searchParams.get('pageToken') === 'cursor / ?' && new URL(calls[1].url).searchParams.get('key') === 'fake-key');
+}
+
+{
+  const calls = stubModelPages([
+    { json: { data: [{ id: 'text-one' }], has_more: true, last_id: 'cursor / ?' } },
+    { json: { data: [{ id: 'text-two' }, { id: 'text-one' }], has_more: false } },
+  ]);
+  const models = await listModels(anthropic, 'fake-key');
+  ok('models: Anthropic loads all pages and removes duplicates', models.join(',') === 'text-one,text-two');
+  ok('models: Anthropic uses after_id without changing the endpoint', new URL(calls[1].url).searchParams.get('after_id') === 'cursor / ?' && new URL(calls[1].url).origin === 'https://api.anthropic.com');
+  ok('models: Anthropic authenticates every page', calls.every((call) => call.init.headers['x-api-key'] === 'fake-key'));
+}
+
+{
+  stubModelPages([
+    { json: { data: [{ id: 'text-one' }], has_more: true, last_id: 'same-cursor' } },
+    { json: { data: [{ id: 'text-one' }], has_more: true, last_id: 'same-cursor' } },
+  ]);
+  let error;
+  try { await listModels(anthropic, 'fake-key'); } catch (err) { error = err; }
+  ok('models: repeated pagination cursors fail instead of looping', error?.code === 'format');
+}
+
+{
+  const calls = stubModelPages([
+    { status: 404, json: { error: 'not found' } },
+    { json: { models: [{ name: 'local-one:latest' }, { model: 'local-two:small' }] } },
+  ]);
+  const models = await listModels({ ...deepseek, id: 'ollama', baseUrl: 'http://localhost:11434/v1' }, '');
+  ok('models: Ollama falls back to the installed-model catalogue', models.join(',') === 'local-one:latest,local-two:small');
+  ok('models: Ollama uses the native tags endpoint after a 404', calls[0].url === 'http://localhost:11434/v1/models' && calls[1].url === 'http://localhost:11434/api/tags');
+}
+
+{
+  const calls = stubModelPages([{ json: { data: [{ id: 'provider-live-model' }, { id: 'provider-live-model' }, { id: '' }, {}, 'other-live-model'] } }]);
+  const models = await listModels({ ...deepseek, id: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1' }, 'fake-key');
+  ok('models: OpenRouter displays actual returned IDs, not preset suggestions', models.join(',') === 'other-live-model,provider-live-model');
+  ok('models: OpenRouter uses its own catalogue and key', calls[0].url === 'https://openrouter.ai/api/v1/models' && calls[0].init.headers.Authorization === 'Bearer fake-key');
+}
+
+{
+  const calls = stubModelPages([{ json: { data: [{ id: 'custom-live-model' }] } }]);
+  const models = await listModels({ ...deepseek, id: 'custom', baseUrl: 'https://proxy.example/my-prefix/v1/' }, 'fake-key');
+  ok('models: custom providers preserve the configured base path', calls[0].url === 'https://proxy.example/my-prefix/v1/models' && models[0] === 'custom-live-model');
+}
+
+{
+  stubModelPages([{ json: { data: [] } }]);
+  ok('models: an empty catalogue stays empty rather than inventing choices', (await listModels(deepseek, 'fake-key')).length === 0);
+  stubModelPages([{ json: { unexpected: [] } }]);
+  let error;
+  try { await listModels(deepseek, 'fake-key'); } catch (err) { error = err; }
+  ok('models: malformed catalogues explain manual entry instead of claiming success', error?.code === 'format');
+}
+
+{
+  const calls = stubModelPages([{ json: { data: [{ id: 'unused' }] } }]);
+  const controller = new AbortController(); controller.abort();
+  let error;
+  try { await listModels(deepseek, 'fake-key', controller.signal); } catch (err) { error = err; }
+  ok('models: cancelled requests do not fetch or return obsolete choices', calls.length === 0 && error?.code === 'aborted');
+}
+
 {
   stubFetch({ chunks: [] });
   let error = null;

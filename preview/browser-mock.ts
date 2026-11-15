@@ -1,6 +1,8 @@
 /** Browser API mock so the React UI can run outside the extension. */
 import { defaultSettings, makeProvider } from '@/lib/core/defaults';
 import type { ProviderId, Settings } from '@/lib/core/types';
+import { handleSubmissionMessage } from '@/lib/features/safety/service';
+import { updateAssistant } from '@/lib/features/assistant/store';
 
 const settings: Settings = {
   ...defaultSettings(),
@@ -42,6 +44,7 @@ const store: Record<string, unknown> = {
 const listeners: Array<(changes: any, area: string) => void> = [];
 
 export const browser = {
+  permissions: { async request() { return true; }, async contains() { return true; } },
   storage: {
     local: {
       async get(key: string) {
@@ -75,7 +78,9 @@ export const browser = {
     getManifest() {
       return { version: '0.7.0' };
     },
-    async sendMessage() {
+    async sendMessage(message: any) {
+      if (message?.type === 'socialme:assistant') return { state: await updateAssistant(message.action) };
+      if (['socialme:reserve-submit', 'socialme:observe-submit', 'socialme:confirm-submit'].includes(message?.type)) return handleSubmissionMessage(message);
       return { ok: true };
     },
     async openOptionsPage() {

@@ -121,9 +121,6 @@ export const xAdapter: PlatformAdapter = {
   },
 
   findOpenEditors() {
-    // New-post pages are out of scope; their composer has no Comment/Reply target.
-    if (/^\/compose(\/|$)/.test(location.pathname)) return [];
-
     // With a dialog open, only its composer matters; the page behind it is inert.
     const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(
       (node) => node.querySelector(EDITOR_SELECTOR),
@@ -131,10 +128,14 @@ export const xAdapter: PlatformAdapter = {
     const scope: ParentNode = dialog ?? document;
     return Array.from(scope.querySelectorAll<HTMLElement>(EDITOR_SELECTOR)).filter((editor) => {
       if (!isVisible(editor)) return false;
+
       const owner = editor.closest('[role="dialog"]');
-      // The new-post dialog has no post to reply to; the panel handles posting.
+      // A reply dialog contains the tweet being answered. The new-post composer
+      // on /compose/post does not, even though it uses the same URL.
       if (owner) return Boolean(owner.querySelector('article[data-testid="tweet"]'));
-      return Boolean(editor.hasAttribute('data-testid') || editor.closest('article'));
+      if (editor.closest('article[data-testid="tweet"]')) return true;
+      // Inline reply on a status page: the target tweet sits above the editor.
+      return /\/status\//.test(location.pathname);
     });
   },
 

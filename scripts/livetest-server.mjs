@@ -201,7 +201,11 @@ const X = `<!doctype html><html><head><meta charset="utf-8"><title>Home / X</tit
  [role=group] button{border:0;background:none;font:inherit;color:inherit;cursor:pointer}
  [role=dialog]{position:fixed;inset:10% 20%;background:#fff;border:1px solid #ccc;border-radius:14px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
  [data-testid=tweetTextarea_0]{min-height:70px;border-bottom:1px solid #eee;padding:8px;outline:none}
- [data-testid=tweetButtonInline]{float:right;margin-top:8px;background:#1d9bf0;color:#fff;border:0;border-radius:20px;padding:8px 16px;cursor:pointer}
+ .x-row{display:flex;align-items:center;gap:8px}
+ .x-icons{display:flex;align-items:center;gap:6px;overflow-x:auto;flex:1}
+ .x-icon-wrap{width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+ .x-icons button{border:0;background:transparent;width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;font-size:17px;color:#536471}
+ [data-testid=tweetButtonInline]{background:#1d9bf0;color:#fff;border:0;border-radius:20px;padding:8px 16px;cursor:pointer}
 </style></head><body>
 <div class="feed">
   <article data-testid="tweet">
@@ -243,11 +247,33 @@ function openReply() {
   ed.setAttribute('data-testid', 'tweetTextarea_0');
   ed.setAttribute('contenteditable', 'true');
   ed.setAttribute('role', 'textbox');
+  // X's reply dialog has a horizontally scrolling icon row and the Reply
+  // control sits outside that scroller.
+  const row = document.createElement('div');
+  row.className = 'x-row';
+  const icons = document.createElement('div');
+  icons.className = 'x-icons';
+  for (const [label, glyph] of [
+    ['Add photos or video', 'IMG'],
+    ['Add a GIF', 'GIF'],
+    ['Add emoji', '☺'],
+    ['Tag location', 'LOC'],
+    ['Content disclosure', 'FLAG'],
+  ]) {
+    const wrap = document.createElement('div');
+    wrap.className = 'x-icon-wrap';
+    const icon = document.createElement('button');
+    icon.setAttribute('aria-label', label);
+    icon.textContent = glyph;
+    wrap.appendChild(icon);
+    icons.appendChild(wrap);
+  }
   const send = document.createElement('button');
   send.setAttribute('data-testid', 'tweetButtonInline');
   send.textContent = 'Reply';
   send.onclick = () => { submitText(ed, 'x'); dialog.remove(); };
-  dialog.append(ed, send);
+  row.append(icons, send);
+  dialog.append(ed, row);
   document.body.appendChild(dialog);
   ed.focus();
 }

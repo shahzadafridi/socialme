@@ -419,6 +419,34 @@ try {
           `comment icon not in the media toolbar (${commentLayout.parent})`,
         );
       }
+      if (platform === 'x') {
+        // X's icon row is a horizontal scroller: the ✦ must sit inside it, right
+        // after the emoji, not above the editor or in the Reply row.
+        const xLayout = await uiEval(
+          session,
+          `const b = document.querySelector('.socialme-quick');
+           const row = b.parentElement;
+           const emoji = Array.from(row.querySelectorAll('[aria-label*="emoji" i]'))[0] || null;
+           const prev = b.previousElementSibling;
+           const prevControl = prev ? (prev.matches('button,[aria-label]') ? prev : prev.querySelector('button,[aria-label]')) : null;
+           const br = b.getBoundingClientRect();
+           const er = emoji ? emoji.getBoundingClientRect() : null;
+           return {
+             parentIsScroller: getComputedStyle(row).overflowX === 'auto',
+             parentOverflow: getComputedStyle(row).overflowX,
+             afterEmoji: Boolean(prevControl && emoji && (prevControl === emoji || prevControl.contains(emoji))),
+             sameRow: Boolean(er) && Math.abs(br.top - er.top) < 2 && br.left > er.right,
+             size: Math.round(br.width),
+           };`,
+        );
+        expect(
+          xLayout.parentIsScroller,
+          `X icon is not inside the icon scroller (parent overflow ${xLayout.parentOverflow})`,
+        );
+        expect(xLayout.afterEmoji, 'X icon is not directly after the emoji');
+        expect(xLayout.sameRow, 'X icon is not on the emoji row');
+        expect(xLayout.size >= 30 && xLayout.size <= 40, `X icon size was ${xLayout.size}`);
+      }
       expect(!commentLayout.inActionRow, 'comment icon fell into the post action row');
 
       await evaluate(

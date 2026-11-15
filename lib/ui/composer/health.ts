@@ -61,11 +61,17 @@ function describeQuickButton(): string {
 }
 
 function submitNear(editor: HTMLElement): boolean {
-  const row = findToolbar(editor)?.row ?? editor.parentElement;
-  if (!row) return false;
-  return Array.from(row.querySelectorAll<HTMLElement>('button, [role="button"]')).some((node) =>
-    /^(send|comment|post|reply|share)/i.test(
-      `${node.getAttribute('aria-label') ?? ''} ${node.innerText ?? ''}`.trim(),
+  const rows = new Set<HTMLElement>();
+
+  const found = findToolbar(editor)?.row;
+  if (found) rows.add(found);
+  if (editor.parentElement) rows.add(editor.parentElement);
+
+  return Array.from(rows).some((row) =>
+    Array.from(row.querySelectorAll<HTMLElement>('button, [role="button"]')).some((node) =>
+      /^(send|comment|post|reply|share)/i.test(
+        `${node.getAttribute('aria-label') ?? ''} ${node.innerText ?? ''}`.trim(),
+      ),
     ),
   );
 }
@@ -94,7 +100,7 @@ function inspect(
     context = false;
   }
 
-  const submit = submitNear(editor);
+  const submit = Boolean(adapter.submitButton(editor)) || submitNear(editor);
 
   return {
     mode,

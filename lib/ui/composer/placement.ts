@@ -76,6 +76,79 @@ export function isUsableButton(button: HTMLElement): boolean {
   return rect.width > 8 && rect.height > 8 && rect.right > 0 && rect.left < window.innerWidth;
 }
 
+/** Nearest X control with this accessible label, closest to the editor first. */
+function xControlNear(editor: HTMLElement, pattern: RegExp): HTMLElement | null {
+  const editorRect = visualRect(editor);
+  return (
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        'button, [role="button"], [aria-label], [title]',
+      ),
+    )
+      .filter(isVisible)
+      .filter((node) => pattern.test(labelOf(node)) || pattern.test(node.innerText ?? ''))
+      .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+      .filter(
+        ({ rect }) =>
+          rect.top > editorRect.top - 360 && rect.bottom < editorRect.bottom + 360,
+      )
+      .sort((a, b) => {
+        const distance = (rect: DOMRect) =>
+          Math.min(
+            Math.abs(rect.top - editorRect.bottom),
+            Math.abs(rect.bottom - editorRect.top),
+          );
+        return distance(a.rect) - distance(b.rect);
+      })[0]?.node ?? null
+  );
+}
+
+/**
+ * X's icon row is a horizontal scroller. Inserting inside the emoji's own
+ * wrapper drops the icon onto a second line inside that wrapper; inserting into
+ * the scroller itself keeps it inline like a native icon.
+ */
+function xIconRow(icon: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = icon.parentElement;
+  for (let depth = 0; node && depth < 8; depth += 1) {
+    if (node === document.body) return null;
+    const overflowX = getComputedStyle(node).overflowX;
+    if (overflowX !== 'visible' && node.parentElement) return node;
+    node = node.parentElement;
+  }
+  return icon.parentElement;
+}
+
+/** Put the X icon at the end of the toolbar's icon row, next to the emoji. */
+function placeAtXEmoji(entry: Entry): boolean {
+  const emoji = xControlNear(entry.editor, /emoji/i);
+  const row = emoji ? xIconRow(emoji) : null;
+  if (!emoji || !row) return false;
+
+  const taken = row.querySelector<HTMLElement>('.socialme-quick');
+  if (taken && taken !== entry.button) return false;
+
+  const icons = iconsIn(row);
+  sizeForRow(entry.button, icons.length ? matchIconSize(icons, emoji) : 36);
+  // X's own icons are ~20px glyphs in 36px hit areas; a filled ✦ at 22 reads
+  // heavier than its outline siblings.
+  const svg = entry.button.querySelector('svg');
+  if (svg) {
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    svg.style.width = '20px';
+    svg.style.height = '20px';
+  }
+  entry.button.style.alignSelf = 'center';
+
+  // Sit after the emoji's direct child wrapper, so X's own flex gap applies.
+  // If an earlier scan parked the icon inside that wrapper, move it back out.
+  const wrapper = childOfRow(row, emoji);
+  if (wrapper) wrapper.after(entry.button);
+  else emoji.after(entry.button);
+  return entry.button.isConnected;
+}
+
 /** Size the button and its glyph so it reads as one of the row's icons. */
 function sizeForRow(button: HTMLButtonElement, size: number): void {
   // Facebook's toolbar icons are outline glyphs on a 30-32px hit area. A big
@@ -399,6 +472,14 @@ export function insertButton(entry: Entry): boolean {
       parent.insertBefore(entry.button, box);
       return entry.button.isConnected;
     }
+  }
+
+  const isXPage = /(^|\.)(x|twitter)\.com$/.test(location.hostname);
+  if (isXPage) {
+    // X renders its icon row only once the composer is focused. Until then,
+    // return false so the next scan retries; any generic fallback would park
+    // the ✦ above the editor instead of in that row.
+    return placeAtXEmoji(entry);
   }
 
   const found = findToolbar(entry.editor);

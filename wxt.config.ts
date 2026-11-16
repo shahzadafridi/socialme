@@ -7,7 +7,7 @@ export default defineConfig({
     name: 'SocialMe — Build your brand on LinkedIn, X & Facebook',
     short_name: 'SocialMe',
     description:
-      'Write comments, message replies and connection notes in your own voice. Review before sending, with local usage limits.',
+      'Turn rough thoughts into comments, message replies and connection notes. Choose your voice, edit the draft and send it yourself.',
     permissions: ['storage'],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     host_permissions: [

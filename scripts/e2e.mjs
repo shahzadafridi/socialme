@@ -299,7 +299,7 @@ try {
   );
   check(
     'popup renders',
-    popupState.rows === 3 && Math.round(popupState.width) === 322,
+    popupState.rows === 4 && Math.round(popupState.width) === 322,
     JSON.stringify(popupState),
   );
 

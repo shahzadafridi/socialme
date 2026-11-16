@@ -10,5 +10,6 @@ stats.html
 .env.*
 .commandcode/
 command-code-session-*.html
+scripts/product-video/
 __pycache__/
 *.pyc

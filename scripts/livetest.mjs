@@ -110,6 +110,11 @@ const PRELUDE = `
   const $ = (s) => (root ? root.querySelector(s) : null);
   const $$ = (s) => (root ? Array.from(root.querySelectorAll(s)) : []);
   const byText = (s, t) => $$(s).find((el) => (el.textContent || '').trim().toLowerCase().includes(t.toLowerCase()));
+  const setValue = (el, value) => {
+    let proto = Object.getPrototypeOf(el), setter;
+    while (proto && !(setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set)) proto = Object.getPrototypeOf(proto);
+    if (setter) setter.call(el, value); else el.value = value;
+  };
 `;
 
 /* --------------------------------- main --------------------------------- */
@@ -198,6 +203,13 @@ try {
     );
     await sleep(400);
     await uiEval(sessionId, `$('.ap-launcher').click(); return true;`);
+    await sleep(300);
+    // Without a hovered post the panel opens the assistant's visible-conversation list.
+    await uiEval(
+      sessionId,
+      `const pick = $$('.ap-history__item')[0]; if (!pick) return false; pick.click(); return true;`,
+    );
+    await sleep(300);
   };
 
   /** Trusted click, like a user: scroll into view then dispatch real mouse events. */
@@ -324,8 +336,7 @@ try {
         session,
         `const input = document.querySelector('.socialme-tone-input');
          if (!input) return false;
-         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-         setter.call(input, ${JSON.stringify(instruction)});
+         setValue(input, ${JSON.stringify(instruction)});
          input.dispatchEvent(new Event('input', { bubbles: true }));
          return true;`,
       );
@@ -714,8 +725,7 @@ try {
       safetySession,
       `const input = $$('.ap-input')[0];
        if (input) {
-         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-         setter.call(input, 'shipping fast without a big team');
+         setValue(input, 'shipping fast without a big team');
          input.dispatchEvent(new Event('input', { bubbles: true }));
        }
        const b = $$('.ap-foot .ap-btn').find((x) => /Generate|Regenerate/.test(x.textContent));
@@ -763,8 +773,7 @@ try {
       safetySession,
       `const input = $$('.ap-input')[0];
        if (input) {
-         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-         setter.call(input, 'shipping fast without a big team');
+         setValue(input, 'shipping fast without a big team');
          input.dispatchEvent(new Event('input', { bubbles: true }));
        }
        const b = $$('.ap-foot .ap-btn').find((x) => /Generate|Regenerate/.test(x.textContent));
@@ -816,8 +825,7 @@ try {
       safetySession,
       `const input = $$('.ap-input')[0];
        if (input) {
-         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-         setter.call(input, 'shipping fast without a big team');
+         setValue(input, 'shipping fast without a big team');
          input.dispatchEvent(new Event('input', { bubbles: true }));
        }
        const b = $$('.ap-foot .ap-btn').find((x) => /Generate|Regenerate/.test(x.textContent));

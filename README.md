@@ -16,6 +16,12 @@ Free and open source. No account, no telemetry, no server. Keys stay in your bro
 
 ## What it does
 
+### New in 0.8.3
+
+- **AI connection notes:** a labelled **Draft note** action appears below LinkedIn's invitation editor, including its component-based dialog. Choose your voice, tone and optional rough thought, then generate and review before sending.
+- **Respect the actual note limit:** prompts and insertion use the field's limit or nearby character counter, including the 200-character invitation form. Existing text requires replacement review.
+- **Live verified in Brave:** generated and inserted an unsent 179/200-character note on the requested test profile. The test draft was cleared and no invitation was sent.
+
 ### New in 0.8.2
 
 - **Provider model dropdowns:** load the catalogue returned by each provider, refresh it, and retain your saved selection. Custom endpoints can still use a manual model ID. Gemini and Anthropic pagination and Ollama’s native catalogue are supported.
@@ -42,7 +48,7 @@ Free and open source. No account, no telemetry, no server. Keys stay in your bro
 | 💬 **Comment replies** | A ✦ in every comment box. Preview the source context, generate a reply, then replace existing text with review and Undo. |
 | 🧵 **Reply to a comment** | The ✦ in a reply box answers that person, not the post — so threads actually continue. |
 | ✉️ **DM replies** | Reads the last 1, 3 or 12 messages and answers the most recent one. |
-| 🔗 **Connection notes** | Writes the 300-character LinkedIn invite note from the person's name and headline. |
+| 🔗 **Connection notes** | Drafts a LinkedIn invite note from the recipient context, within the editor's actual character limit. |
 | 🎭 **Eight voices** | `My voice` is the default; switch to Thought leader, Principal Architect, AI Builder and more. |
 | 🎚️ **Voice + tone in one click** | The ✦ menu has a voice selector, tone chips and an optional instruction. |
 | 🧠 **Full panel** (`⌘⇧A`) | Eight angles, tone, length, language, context checks, refinement and recent drafts. |

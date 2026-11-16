@@ -164,6 +164,7 @@ export function needsReplacing(entry: Entry): boolean {
   const parent = button.parentElement;
   if (!parent) return true;
   if (entry.placedParent && parent !== entry.placedParent) return true;
+  if (entry.mode === 'note') return parent !== entry.noteRow || entry.noteRow?.previousElementSibling !== entry.editor;
 
   const xPage = /(^|\.)(x|twitter)\.com$/.test(location.hostname);
   // X's ✦ sits right after the emoji by design, not at the end of the row.
@@ -480,6 +481,24 @@ export function findToolbar(editor: HTMLElement): Toolbar | null {
 }
 
 export function insertButton(entry: Entry): boolean {
+  // Invite notes have no media toolbar. Give the note its own action rather
+  // than borrowing the dialog's Dismiss, Cancel or Send controls.
+  if (entry.mode === 'note' && entry.editor.parentElement) {
+    const row = entry.noteRow ?? document.createElement('div');
+    row.setAttribute('data-socialme-owned', 'note-actions');
+    row.style.cssText = 'display:flex;align-items:center;margin:6px 0;min-height:32px;position:relative;z-index:1';
+    entry.noteRow = row;
+    entry.button.style.width = 'auto';
+    entry.button.style.minWidth = '106px';
+    entry.button.style.height = '32px';
+    entry.button.style.padding = '0 10px';
+    entry.button.style.borderRadius = '16px';
+    entry.button.style.background = 'rgba(91,75,219,0.10)';
+    entry.button.style.color = '#5b4bdb';
+    row.appendChild(entry.button);
+    entry.editor.after(row);
+    return entry.button.isConnected;
+  }
   // Textarea composers (X chat) keep their icon row to the left of the field:
   // sit immediately before the field so the icon reads as the last one.
   if (entry.editor.tagName === 'TEXTAREA' && entry.editor.parentElement) {

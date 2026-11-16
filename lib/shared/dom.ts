@@ -11,7 +11,9 @@ export function debounce<T extends (...args: any[]) => void>(fn: T, waitMs: numb
 }
 
 export function isVisible(el: Element | null | undefined): boolean {
-  if (!el || !(el instanceof HTMLElement)) return false;
+  // LinkedIn adopts its invitation form from a same-origin iframe. Its nodes
+  // keep that iframe's prototypes even after ownerDocument becomes this page.
+  if (!el || el.nodeType !== 1) return false;
   if (!el.isConnected) return false;
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return false;
@@ -19,22 +21,52 @@ export function isVisible(el: Element | null | undefined): boolean {
   return style.visibility !== 'hidden' && style.display !== 'none';
 }
 
+export function isTextArea(el: Element | null | undefined): el is HTMLTextAreaElement {
+  return el?.tagName === 'TEXTAREA';
+}
+
+export function isTextControl(el: Element | null | undefined): el is HTMLTextAreaElement | HTMLInputElement {
+  return isTextArea(el) || el?.tagName === 'INPUT';
+}
+
+/** Use the field's real limit, including LinkedIn's nearby 0/200 counter. */
+export function editorCharacterLimit(editor: HTMLElement, fallback: number): number {
+  const attribute = Number(editor.getAttribute?.('maxlength'));
+  if (Number.isFinite(attribute) && attribute > 0) return Math.min(fallback, Math.floor(attribute));
+  let parent = editor.parentElement;
+  for (let depth = 0; parent && depth < 2; depth += 1, parent = parent.parentElement) {
+    const matches = [...(parent.innerText ?? '').matchAll(/(?:^|\n)\s*\d+\s*\/\s*(\d+)\s*(?=\n|$)/g)];
+    if (matches.length === 1) {
+      const limit = Number(matches[0][1]);
+      if (limit > 0 && Number.isFinite(limit)) return Math.min(fallback, limit);
+    }
+  }
+  return fallback;
+}
+
 const OWN_HOST = 'socialme-shadow-host';
 
 /**
- * querySelectorAll that also walks open shadow roots. X's chat UI (and parts of
- * Messenger's) render inside a shadow root, where document queries see nothing.
+ * Walk component roots, including LinkedIn's closed invitation component when
+ * Chrome exposes its documented extension-only DOM API. No extra permissions.
  */
 export function deepQueryAll<T extends Element = HTMLElement>(
   selector: string,
   root: ParentNode = document,
 ): T[] {
   const found: T[] = [];
+  const extensionDom = (globalThis as { chrome?: { dom?: {
+    openOrClosedShadowRoot?: (element: HTMLElement) => ShadowRoot | null;
+  } } }).chrome?.dom;
   const walk = (node: ParentNode) => {
     found.push(...Array.from(node.querySelectorAll<T>(selector)));
     for (const el of Array.from(node.querySelectorAll<HTMLElement>('*'))) {
       if (el.id === OWN_HOST) continue;
-      const shadow = el.shadowRoot;
+      let shadow = el.shadowRoot;
+      if (!shadow) {
+        try { shadow = extensionDom?.openOrClosedShadowRoot?.(el) ?? null; }
+        catch { /* Other browsers and non-HTML hosts keep the normal path. */ }
+      }
       if (shadow) walk(shadow as unknown as ParentNode);
     }
   };
@@ -45,7 +77,7 @@ export function deepQueryAll<T extends Element = HTMLElement>(
 /** The tree a node really lives in (its shadow root, or the document). */
 export function rootOf(node: Node): ParentNode {
   const root = node.getRootNode();
-  return (root instanceof ShadowRoot ? root : document) as ParentNode;
+  return ((root as ShadowRoot).host ? root : document) as ParentNode;
 }
 
 export async function waitFor<T>(

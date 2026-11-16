@@ -1,6 +1,6 @@
 import type { TypingSpeed } from '@/lib/core/types';
 import { actualEditable, editorText, insertIntoEditor, looksInserted } from '@/lib/integrations/insert';
-import { sleep } from '@/lib/shared/dom';
+import { sleep, isTextControl } from '@/lib/shared/dom';
 
 interface TypingProfile {
   chunk: [number, number];
@@ -68,7 +68,7 @@ export async function typeLikeHuman(
   signal?: AbortSignal,
 ): Promise<boolean> {
   signal?.throwIfAborted();
-  if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
+  if (isTextControl(editor)) {
     return insertIntoEditor(editor, text);
   }
   if (!editor.isContentEditable && !editor.getAttribute('contenteditable')) return false;

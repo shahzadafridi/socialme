@@ -1,4 +1,4 @@
-import { dropNested, isVisible, waitFor } from '@/lib/shared/dom';
+import { deepQueryAll, dropNested, isVisible, isTextArea, waitFor } from '@/lib/shared/dom';
 import { humanClick } from '@/lib/integrations/insert';
 import { findMessageComposers, readThread } from '@/lib/integrations/messaging';
 import { firstText, normalizeText, type PlatformAdapter } from '@/lib/integrations/adapter';
@@ -130,25 +130,52 @@ function editorCandidates(post: HTMLElement): HTMLElement[] {
   ).filter((node) => isVisible(node) && node.getBoundingClientRect().height > 0);
 }
 
-/**
- * The note attached to a connection request. LinkedIn caps it at 300 characters
- * and labels the box "Add a note", so either signal identifies it; comment boxes
- * inside the feed are excluded.
- */
+const INVITATION_HEADING = /^(?:add (?:a |your )?note(?: to (?:your|the) invitation)?|personalize (?:your |the )?invitation)[?.!]?$/i;
+
+/** LinkedIn also names fields through <label for> and aria-labelledby. */
+function noteHint(editor: HTMLElement): string {
+  const references = ['aria-labelledby', 'aria-describedby'].flatMap((attribute) =>
+    (editor.getAttribute(attribute) ?? '').split(/\s+/).filter(Boolean),
+  );
+  const labels = isTextArea(editor) ? Array.from(editor.labels ?? []) : [];
+  const tree = editor.getRootNode() as Document | ShadowRoot;
+  return normalizeText([
+    editor.getAttribute('aria-label'), editor.getAttribute('placeholder'),
+    editor.getAttribute('data-placeholder'), ...labels.map((label) => label.textContent),
+    ...references.map((id) => (tree.getElementById?.(id) ?? editor.ownerDocument.getElementById(id))?.textContent),
+  ].filter(Boolean).join(' '));
+}
+
+/** A bounded form scope; never treat an entire profile/feed as an invitation. */
+function invitationScope(editor: HTMLElement): HTMLElement | null {
+  const dialog = editor.closest<HTMLElement>('[role="dialog"], dialog, [aria-modal="true"], .artdeco-modal');
+  if (dialog) return dialog;
+  let parent = editor.parentElement;
+  for (let depth = 0; parent && depth < 6; depth += 1, parent = parent.parentElement) {
+    if (parent === document.body || parent === document.documentElement || parent.matches('main, [role="main"]')) break;
+    const heading = Array.from(parent.querySelectorAll<HTMLElement>('h1, h2, h3, [role="heading"]'))
+      .some((node) => isVisible(node) && INVITATION_HEADING.test(normalizeText(node.innerText)));
+    if (heading && parent.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]').length === 1) return parent;
+  }
+  return null;
+}
+
+export function isConnectionNote(hint: string, hasInvitationHeading: boolean, maxLength: number): boolean {
+  // The live dialog can say "300 characters" while its textarea allows 200.
+  const explicit = /\b(?:personal note|connection note|invitation|add a note)\b/i.test(hint);
+  return explicit || (hasInvitationHeading && (maxLength === -1 || (maxLength > 0 && maxLength <= 300)));
+}
+
 function noteEditors(): HTMLElement[] {
-  return Array.from(
-    document.querySelectorAll<HTMLElement>(
-      'textarea, [contenteditable="true"], [role="textbox"]',
-    ),
-  ).filter((node) => {
+  return deepQueryAll<HTMLElement>('textarea, [contenteditable="true"], [role="textbox"]').filter((node) => {
     if (!isVisible(node)) return false;
-    if (node.closest('[role="listitem"]')) return false;
-    const hint = `${node.getAttribute('aria-label') ?? ''} ${node.getAttribute('placeholder') ?? ''} ${node.getAttribute('data-placeholder') ?? ''}`;
-    const maxLength = node instanceof HTMLTextAreaElement ? node.maxLength : -1;
-    return (
-      /note|invitation/i.test(hint) ||
-      (Boolean(node.closest('[role="dialog"]')) && maxLength === 300)
-    );
+    if (node.closest('#socialme-shadow-host, .socialme-tone-menu, [data-socialme-owned]')) return false;
+    if (node.hasAttribute('readonly') || node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true') return false;
+    const scope = invitationScope(node);
+    const heading = scope ? Array.from(scope.querySelectorAll<HTMLElement>('h1, h2, h3, [role="heading"]'))
+      .some((item) => isVisible(item) && INVITATION_HEADING.test(normalizeText(item.innerText))) : false;
+    const maxLength = isTextArea(node) ? node.maxLength : -1;
+    return isConnectionNote(noteHint(node), heading, maxLength);
   });
 }
 
@@ -269,7 +296,7 @@ export const linkedinAdapter: PlatformAdapter = {
   hasContent(editor) {
     if (!editor.isConnected) return false;
     const value =
-      editor instanceof HTMLTextAreaElement ? editor.value : (editor.innerText ?? '');
+      isTextArea(editor) ? editor.value : (editor.innerText ?? '');
     return normalizeText(value).length > 0;
   },
 
@@ -307,22 +334,19 @@ export const linkedinAdapter: PlatformAdapter = {
   },
 
   readNoteRecipient(editor) {
-    const dialog = editor.closest('[role="dialog"]');
-    const scope: ParentNode = dialog ?? document;
-    let { name, headline } = personFromInvite(scope);
+    const dialog = invitationScope(editor);
+    const scope: ParentNode = dialog ?? editor.parentElement ?? editor;
+    let { name, headline } = dialog ? personFromInvite(scope) : { name: '', headline: '' };
 
-    if (!name) {
-      const value =
-        editor instanceof HTMLTextAreaElement ? editor.value : (editor.innerText ?? '');
-      const match = value.match(
-        /^\s*(?:hi|hello|hey)[ ,]+([\p{L}][\p{L}.'-]*(?:\s+[\p{L}][\p{L}.'-]*){0,2})/iu,
-      );
-      if (match) name = match[1].trim();
-    }
-
-    if (!name && /^\/in\//.test(location.pathname)) {
-      const main = document.querySelector('main') ?? document.body;
-      name = normalizeText(main.querySelector<HTMLElement>('h1')?.innerText).slice(0, 80);
+    // A draft's greeting is generated/user text, not recipient identity. Reading
+    // it as a name made the source change after insertion ("Muhammad, most of").
+    const profileDocument = /^\/in\//.test(location.pathname) ? document : null;
+    if (!name && profileDocument) {
+      const main = profileDocument.querySelector('main, [role="main"]') ?? profileDocument.body;
+      const titleName = profileDocument.title.replace(/^\(\d+\)\s*/, '').replace(/\s*\|\s*LinkedIn\s*$/i, '').trim();
+      const headings = Array.from(main.querySelectorAll<HTMLElement>('h1, h2, [role="heading"]')).filter(isVisible);
+      name = normalizeText(headings.find((node) => normalizeText(node.innerText) === titleName)?.innerText ||
+        headings.find((node) => node.matches('h1') && !GENERIC_INVITE_HEADING.test(normalizeText(node.innerText)))?.innerText).slice(0, 80);
       if (!headline) {
         headline = firstText(main, [
           'h1 + div',

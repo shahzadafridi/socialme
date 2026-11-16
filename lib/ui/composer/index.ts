@@ -8,6 +8,7 @@ import { contextLimit } from '@/lib/integrations/messaging';
 import { readCommentBeingRepliedTo, type PlatformAdapter } from '@/lib/integrations/adapter';
 import { typeLikeHuman } from '@/lib/features/safety/humanize';
 import { NOTE_LIMIT } from '@/lib/core/constants';
+import { editorCharacterLimit } from '@/lib/shared/dom';
 import { addHistory, getSettings, resolvePersona, saveLastDraft } from '@/lib/data/storage';
 import { resolveTone } from '@/lib/core/defaults';
 import type { Channel, GenerateRequest, PortMessage, Settings } from '@/lib/core/types';
@@ -31,11 +32,11 @@ const CHANNEL_OF: Record<Mode, Channel> = {
  * the extra keystrokes, so cut on a word boundary before writing. The prompt already
  * aims below the cap; this only catches models that overshoot.
  */
-function fitNote(text: string): string {
-  if (text.length <= NOTE_LIMIT) return text;
-  const cut = text.slice(0, NOTE_LIMIT);
+function fitNote(text: string, limit = NOTE_LIMIT): string {
+  if (text.length <= limit) return text;
+  const cut = text.slice(0, limit);
   const space = cut.lastIndexOf(' ');
-  return (space > NOTE_LIMIT * 0.75 ? cut.slice(0, space) : cut).trimEnd();
+  return (space > limit * 0.75 ? cut.slice(0, space) : cut).trimEnd();
 }
 
 export async function applyComposerDraft(
@@ -50,7 +51,8 @@ export async function applyComposerDraft(
   isCurrentContext: () => boolean = () => true,
 ): Promise<void> {
   if (signal.aborted) return;
-  const clean = entry.mode === 'note' ? fitNote(text.trim()) : text.trim();
+  const noteLimit = editorCharacterLimit(entry.editor, NOTE_LIMIT);
+  const clean = entry.mode === 'note' ? fitNote(text.trim(), noteLimit) : text.trim();
   if (!clean) {
     setState(entry, 'error', 'The model returned nothing');
     return;
@@ -124,6 +126,7 @@ export function installComposerButtons(
       // ignore
     }
     entry.button.remove();
+    entry.noteRow?.remove();
     entries.delete(editor);
   };
 
@@ -275,6 +278,7 @@ export function installComposerButtons(
           : undefined,
         replyingTo,
         recipient,
+        noteMaxChars: mode === 'note' ? editorCharacterLimit(editor, NOTE_LIMIT) : undefined,
         personaId: persona.id,
         angle: settings.defaults.angle,
         tone,
@@ -357,9 +361,15 @@ export function installComposerButtons(
       noteEditors = [];
     }
 
-    for (const editor of commentEditors) if (!entries.has(editor)) mount(editor, 'comment');
-    for (const editor of messageEditors) if (!entries.has(editor)) mount(editor, 'dm');
-    for (const editor of noteEditors) if (!entries.has(editor)) mount(editor, 'note');
+    const modes = new Map<HTMLElement, Mode>();
+    for (const editor of commentEditors) modes.set(editor, 'comment');
+    for (const editor of messageEditors) modes.set(editor, 'dm');
+    for (const editor of noteEditors) modes.set(editor, 'note');
+    for (const [editor, mode] of modes) {
+      const previous = entries.get(editor);
+      if (previous && previous.mode !== mode) remove(editor);
+      if (!entries.has(editor)) mount(editor, mode);
+    }
 
     for (const [editor, entry] of entries) {
       if (!editor.isConnected) {

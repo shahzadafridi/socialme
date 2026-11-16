@@ -11,6 +11,7 @@ export interface Entry {
   placedParent?: HTMLElement | null;
   resetTimer?: number;
   controller?: AbortController;
+  noteRow?: HTMLDivElement;
 }
 
 
@@ -47,6 +48,12 @@ export function setState(entry: Entry, state: 'idle' | 'busy' | 'done' | 'error'
 
   if (state === 'idle') {
     button.innerHTML = SPARKLE;
+    if (entry.mode === 'note') {
+      const label = document.createElement('span');
+      label.textContent = 'Draft note';
+      label.style.cssText = 'font:600 13px/1.2 system-ui,sans-serif;margin-left:6px';
+      button.appendChild(label);
+    }
     button.title =
       entry.mode === 'dm'
         ? 'SocialMe — draft a reply to this conversation'

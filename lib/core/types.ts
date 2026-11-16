@@ -263,6 +263,8 @@ export interface GenerateRequest {
   replyingTo?: ReplyTarget;
   /** Connection notes: who the invite goes to. */
   recipient?: RecipientContext;
+  /** Actual invitation editor limit; some LinkedIn accounts allow only 200. */
+  noteMaxChars?: number;
   personaId?: string;
   angle?: Angle;
   tone?: string;

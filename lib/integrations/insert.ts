@@ -1,4 +1,4 @@
-import { deepQueryAll, isMac, isVisible } from '@/lib/shared/dom';
+import { deepQueryAll, isMac, isVisible, isTextArea, isTextControl } from '@/lib/shared/dom';
 
 const normalize = (value: string): string =>
   value
@@ -7,7 +7,7 @@ const normalize = (value: string): string =>
     .trim();
 
 export function editorText(editor: HTMLElement): string {
-  return editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement
+  return isTextControl(editor)
     ? editor.value
     : editor.innerText || editor.textContent || '';
 }
@@ -42,7 +42,7 @@ export function placeCaretAtEnd(editor: HTMLElement): void {
  * point at a dead node. Re-resolve by data-testid inside the same tree.
  */
 export function freshestEditor(editor: HTMLElement): HTMLElement {
-  if (!(editor instanceof HTMLTextAreaElement)) return editor;
+  if (!isTextArea(editor)) return editor;
   if (editor.isConnected) return editor;
   const testId = editor.getAttribute('data-testid');
   if (!testId) return editor;
@@ -103,12 +103,8 @@ async function insertViaBeforeInput(editor: HTMLElement, text: string): Promise<
 
 /** Remove everything an editor currently holds, keeping its model in sync. */
 export function clearEditor(editor: HTMLElement): void {
-  if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
-    const proto =
-      editor instanceof HTMLTextAreaElement
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-    Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(editor, '');
+  if (isTextControl(editor)) {
+    setNativeValue(editor, '');
     editor.dispatchEvent(new Event('input', { bubbles: true }));
     return;
   }
@@ -122,6 +118,17 @@ export function clearEditor(editor: HTMLElement): void {
   if ((editor.innerText ?? '').trim().length > 0) editor.textContent = '';
 }
 
+/** Start at the actual node's prototype, including an adopted iframe realm. */
+function setNativeValue(editor: HTMLTextAreaElement | HTMLInputElement, value: string): void {
+  let prototype = Object.getPrototypeOf(editor);
+  while (prototype) {
+    const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+    if (setter) { setter.call(editor, value); return; }
+    prototype = Object.getPrototypeOf(prototype);
+  }
+  editor.value = value;
+}
+
 async function insertIntoInput(
   el: HTMLInputElement | HTMLTextAreaElement,
   text: string,
@@ -132,13 +139,7 @@ async function insertIntoInput(
 
   // Write through the prototype setter so React's value tracker notices the
   // change: that makes the framework own the text, so its next render keeps it.
-  const proto =
-    el instanceof HTMLTextAreaElement
-      ? HTMLTextAreaElement.prototype
-      : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-  if (setter) setter.call(el, text);
-  else el.value = text;
+  setNativeValue(el, text);
   // Only `input`: a `change` event makes some editors commit/clear the draft.
   el.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -227,7 +228,7 @@ export async function insertIntoEditor(editor: HTMLElement, text: string): Promi
   const target = actualEditable(editor);
   target.focus();
 
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+  if (isTextControl(target)) {
     return await insertIntoInput(target, text);
   }
 

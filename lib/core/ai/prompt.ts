@@ -198,7 +198,7 @@ const DM_GUIDE = `DIRECT MESSAGES
 
 const NOTE_GUIDE = `CONNECTION-REQUEST NOTES
 - This is the short note attached to a LinkedIn invitation to connect. Write only the note.
-- Hard limit: ${NOTE_LIMIT} characters. Aim for 200-280 so nothing gets cut off.
+- Stay comfortably below the hard character limit supplied with this request so nothing gets cut off.
 - One real reason to connect, grounded in their headline, their post or what I am working on.
 - Optional opener: "Hi {first name}," then the reason. No other greeting and no sign-off.
 - No pitch, no price, no links, no hashtags, no emoji, no attaching a resume.
@@ -241,8 +241,10 @@ export function buildPrompt(ctx: BuildContext): BuiltPrompt {
   const tone = request.tone?.trim() || persona.tone;
   const language = languageOf(persona, request);
   const guide = PLATFORM_GUIDE[platform];
+  const noteCap = Number.isFinite(request.noteMaxChars) && request.noteMaxChars! > 0
+    ? Math.min(NOTE_LIMIT, Math.floor(request.noteMaxChars!)) : NOTE_LIMIT;
   const platformCap =
-    channel === 'note' ? NOTE_LIMIT : channel === 'dm' ? 1200 : PLATFORMS[platform].commentLimit;
+    channel === 'note' ? noteCap : channel === 'dm' ? 1200 : PLATFORMS[platform].commentLimit;
   const limit = Math.min(persona.replyMaxChars, platformCap);
   const brandLines = brand ? (brand.mode === 'off' ? (brand.forbidden ? `- Never claim or discuss: ${brand.forbidden}` : '') : brandBlock(brand)) : '';
   const replyTo = request.replyingTo;

@@ -10,7 +10,13 @@
   Chrome Manifest V3 · LinkedIn · X · Facebook · bring your own API key
 </p>
 
+<p align="center">
+  <img src="docs/store/promo-440x280.png" alt="SocialMe — comments, message replies and connection notes in your voice" width="440">
+</p>
+
 Free and open source. No account, no telemetry, no server. Keys stay in your browser.
+
+**[Install](#install-2-minutes)** · **[Screenshots](#screenshots)** · **[What's new in 0.8.3](#new-in-083)** · **[Releases](../../releases)**
 
 ---
 
@@ -18,9 +24,25 @@ Free and open source. No account, no telemetry, no server. Keys stay in your bro
 
 ### New in 0.8.3
 
-- **AI connection notes:** a labelled **Draft note** action appears below LinkedIn's invitation editor, including its component-based dialog. Choose your voice, tone and optional rough thought, then generate and review before sending.
-- **Respect the actual note limit:** prompts and insertion use the field's limit or nearby character counter, including the 200-character invitation form. Existing text requires replacement review.
-- **Live verified in Brave:** generated and inserted an unsent 179/200-character note on the requested test profile. The test draft was cleared and no invitation was sent.
+**Connection notes, in your voice**
+
+- **Draft note on every invitation editor:** a labelled **Draft note** action sits below LinkedIn's invitation box, including the newer component-based dialog and its shadow-root variant. Pick a voice and tone, add an optional rough thought, review the draft, then send it yourself.
+- **The field's real limit:** prompts and insertion read the field's own limit or the nearby character counter — 200 on the standard invitation form — instead of assuming 300. A counter overrides a misleading label.
+- **Never mistaken for a comment:** the action is found from its invitation heading, ARIA label or counter, and excluded from comment, new-post and hidden-field detection.
+- **Review before it replaces anything:** existing text is never overwritten silently; replacement asks for review and keeps Undo.
+
+**Fixed in 0.8.3**
+
+- The ✦ no longer drifts out of X's media row — it anchors at the native 36px size and retries until the row exists.
+- Length instructions are honoured when they conflict with the platform default.
+- Storage writes are serialised, and a malformed backup is rejected instead of replacing your settings.
+- Provider host access is requested at runtime from **Test connection** / **Load models**, and catalogues are read with pagination.
+- Invitation editors inside open shadow roots or closed components are reached without new permissions.
+
+**Verified**
+
+- **215 checks pass:** 100 logic, 42 provider/e2e, 62 reliability, 11 LinkedIn-note fixtures.
+- Live in Brave: an unsent 179/200-character note was generated and inserted, then cleared. **No invitation was sent.**
 
 ### New in 0.8.2
 
@@ -59,7 +81,11 @@ Free and open source. No account, no telemetry, no server. Keys stay in your bro
 | 🔒 **Local-first** | Data stays in `chrome.storage.local`; model requests go to your selected provider. Back up settings, voices, drafts and usage without keys. |
 | 🩺 **Diagnostics** | Composer health for LinkedIn, X and Facebook plus a per-page scan when a platform changes. |
 
-## One click on every surface
+## Screenshots
+
+Every image below is a real screen from this build, used for the Chrome Web Store listing.
+
+### One click on every surface
 
 <p align="center">
   <img src="docs/store/screenshot-4.png" alt="SocialMe on LinkedIn, X and Facebook" width="760">
@@ -68,7 +94,7 @@ Free and open source. No account, no telemetry, no server. Keys stay in your bro
 Comment on a post, reply to a comment, answer a DM, or write a LinkedIn invite note. Same icon,
 same voice, in the composer you are already using.
 
-## Voice and tone in one click
+### Voice and tone in one click
 
 <p align="center">
   <img src="docs/store/screenshot-2.png" alt="The SocialMe voice and tone menu" width="760">
@@ -77,7 +103,7 @@ same voice, in the composer you are already using.
 Pick the voice and the tone, add an instruction such as “mention the 2-week launch”, then Generate.
 The draft lands in the box; you edit it and press Comment yourself.
 
-## Eight voices, one identity
+### Eight voices, one identity
 
 <p align="center">
   <img src="docs/store/screenshot-3.png" alt="The eight SocialMe voices" width="760">
@@ -99,7 +125,7 @@ The draft lands in the box; you edit it and press Comment yourself.
 [How the voices work](https://github.com/shahzadafridi/socialme/wiki/Voices) ·
 [Ready-to-paste examples](https://github.com/shahzadafridi/socialme/wiki/Voice-examples)
 
-## The full panel
+### The full panel
 
 <p align="center">
   <img src="docs/store/screenshot-1.png" alt="The SocialMe panel" width="760">
@@ -122,7 +148,8 @@ draft refinement, regenerate with rejected drafts, and recent history.
 - **Comment** on a post → **✦** → pick a voice and tone → Generate → edit → press Comment.
 - **Reply to a comment** → **✦** in that reply box → it answers the commenter.
 - **Open a DM** → **✦** in the message toolbar → it answers the last message.
-- **Send a connection request** → **Add a note** → **✦** → a 300-character note in your voice.
+- **Send a connection request** → **Add a note** → **Draft note** → a note in your voice, kept
+  inside the field's own limit (200 characters on the standard invitation form).
 - **⌘⇧A** opens the panel for angles, tone, length, refinement and context checks.
 
 ## Safety and privacy
@@ -150,6 +177,20 @@ The manual lives in the **[wiki](https://github.com/shahzadafridi/socialme/wiki)
   [Publishing](https://github.com/shahzadafridi/socialme/wiki/Publishing) ·
   [Contributing](https://github.com/shahzadafridi/socialme/wiki/Contributing)
 - [Privacy policy](./PRIVACY.md)
+
+## Releases
+
+| Version | Focus |
+|---|---|
+| [v0.8.3](https://github.com/shahzadafridi/socialme/releases/tag/v0.8.3) | Connection notes in the invitation editor, real character limits, review before replace |
+| [v0.8.2](https://github.com/shahzadafridi/socialme/releases/tag/v0.8.2) | Provider model dropdowns, shared voice guide |
+| [v0.8.1](https://github.com/shahzadafridi/socialme/releases/tag/v0.8.1) | My rough thought, source → reply examples |
+| [v0.8.0](https://github.com/shahzadafridi/socialme/releases/tag/v0.8.0) | Assistant home, voice calibration, per-platform pause |
+| [v0.7.2](https://github.com/shahzadafridi/socialme/releases/tag/v0.7.2) | X reply icon anchored in the real composer row |
+
+Each release carries the exact `socialme-<version>-chrome.zip` that was built and verified.
+`npm run test:logic` covers the logic, provider, reliability and LinkedIn-note suites;
+`npm run test:all` adds the extension e2e and live fixture flows.
 
 ## Development
 

@@ -216,9 +216,9 @@ const { applyComposerDraft } = await load('lib/ui/composer/index.ts', {
   '@/lib/features/safety/submissions': 'export function trackManualDraft(){}',
 });
 const previewSettings = { ...defaultSettings(), safety: { ...defaultSettings().safety, humanTyping: false } };
-async function applyDraft({ initial = '', previous = initial, replace = true, onReview, aborted = false, mode = 'comment', text = 'Generated reply' } = {}) {
+async function applyDraft({ initial = '', previous = initial, replace = true, onReview, aborted = false, mode = 'comment', text = 'Generated reply', maxLength } = {}) {
   globalThis.__composer = { writes: 0, reviews: 0, replace, onReview };
-  const entry = { editor: { text: initial, isConnected: true }, button: {}, mode };
+  const entry = { editor: { text: initial, isConnected: true, getAttribute: () => maxLength == null ? null : String(maxLength) }, button: {}, mode };
   const controller = new AbortController(); if (aborted) controller.abort();
   await applyComposerDraft(entry, text, previewSettings, { id: 'linkedin' }, 'source', previous, 'selected-voice', controller.signal);
   return entry;
@@ -258,6 +258,19 @@ await test('an edit made during replacement review is preserved', async () => {
 await test('connection-note insertion enforces the note character cap', async () => {
   const entry = await applyDraft({ mode: 'note', text: 'A long invitation '.repeat(30) });
   assert.ok(entry.editor.text.length <= 300);
+});
+await test('a 200-character invitation field uses its actual cap without touching Send', async () => {
+  const entry = await applyDraft({ mode: 'note', maxLength: 200, text: 'A practical reason to connect. '.repeat(20) });
+  assert.ok(entry.editor.text.length > 150 && entry.editor.text.length <= 200);
+  assert.equal(globalThis.__composer.history.channel, 'note');
+  assert.equal(globalThis.__composer.history.submitted, false);
+  assert.equal(entry.state, 'done');
+});
+await test('larger or invalid note caps cannot bypass the 300-character ceiling', async () => {
+  for (const maxLength of [500, -1, undefined]) {
+    const entry = await applyDraft({ mode: 'note', maxLength, text: 'A real invitation. '.repeat(30) });
+    assert.ok(entry.editor.text.length <= 300);
+  }
 });
 await test('a reply cannot land in a different conversation after context changes', async () => {
   globalThis.__composer = { writes: 0, reviews: 0, replace: true };

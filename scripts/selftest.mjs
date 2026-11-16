@@ -134,6 +134,11 @@ ok('note: forbids links and pitches', /No pitch, no price, no links/i.test(note.
 ok('note: carries the instruction', note.user.includes('Berlin product meetup'));
 ok('note: bounded token budget', note.maxTokens > 100 && note.maxTokens <= 500);
 ok('note: never invents a name', note.user.includes('do not invent one'));
+const shortNote = buildPrompt({ request: { channel: 'note', platform: 'linkedin', noteMaxChars: 200 }, persona, platform: 'linkedin' });
+ok('note: requests fit the live 200-character field', shortNote.user.includes('Hard max 200 characters') && shortNote.system.includes('Length must not exceed 200 characters'));
+ok('note: no conflicting 200–280 target for a smaller field', !shortNote.system.includes('Aim for 200-280'));
+const oversizedNote = buildPrompt({ request: { channel: 'note', platform: 'linkedin', noteMaxChars: 900 }, persona, platform: 'linkedin' });
+ok('note: requested cap cannot exceed LinkedIn maximum', oversizedNote.user.includes('Hard max 300 characters'));
 
 /* --------------------------- avoid / extra --------------------------- */
 
